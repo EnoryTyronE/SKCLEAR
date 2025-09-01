@@ -10,7 +10,8 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  Eye
+  Eye,
+  UserPlus
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -122,6 +123,17 @@ const Dashboard: React.FC = () => {
       color: 'bg-purple-500 hover:bg-purple-600'
     }
   ];
+
+  // Add User Management for chairperson
+  if (user?.role === 'chairperson') {
+    quickActions.unshift({
+      name: 'Manage Users',
+      description: 'Add and manage SK member accounts',
+      icon: UserPlus,
+      href: '/user-management',
+      color: 'bg-indigo-500 hover:bg-indigo-600'
+    });
+  }
 
   const getStatusIcon = (status: string) => {
     switch (status) {

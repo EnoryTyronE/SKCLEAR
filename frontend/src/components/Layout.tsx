@@ -11,7 +11,8 @@ import {
   Menu, 
   X, 
   LogOut,
-  User
+  User,
+  UserPlus
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -28,7 +29,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'SK Setup', href: '/sk-setup', icon: Users, role: 'chairperson' },
-    { name: 'CBYDP', href: '/cbydp', icon: FileText, role: 'chairperson' },
+    { name: 'CBYDP', href: '/cbydp', icon: FileText },
     { name: 'ABYIP', href: '/abyip', icon: Calendar, role: 'chairperson' },
     { name: 'Budget', href: '/budget', icon: DollarSign, role: 'treasurer' },
     { name: 'Projects', href: '/projects', icon: Target },

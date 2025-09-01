@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +10,11 @@ import Projects from './pages/Projects';
 import Transparency from './pages/Transparency';
 import Layout from './components/Layout';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import PublicTransparency from './pages/PublicTransparency';
+import Setup from './pages/Setup';
+import YouthTransparency from './pages/YouthTransparency';
+import FileUploadTest from './components/FileUploadTest';
+import googleDriveService from './services/googleDriveService';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -24,6 +29,9 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 function App() {
+  // Google Drive auto-connects when the service is created
+  // No manual initialization needed
+
   return (
     <AuthProvider>
       <Router>
@@ -35,15 +43,12 @@ function App() {
                 <Login />
               </PublicRoute>
             } />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="/transparency-public" element={<PublicTransparency />} />
+            <Route path="/youth-transparency" element={<YouthTransparency />} />
             
             {/* Protected Routes */}
-            <Route path="/" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Dashboard />
-                </Layout>
-              </ProtectedRoute>
-            } />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             
             <Route path="/dashboard" element={
               <ProtectedRoute>
@@ -97,6 +102,15 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Transparency />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            {/* File Upload Test Route */}
+            <Route path="/file-upload-test" element={
+              <ProtectedRoute>
+                <Layout>
+                  <FileUploadTest />
                 </Layout>
               </ProtectedRoute>
             } />

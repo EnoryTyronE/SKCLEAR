@@ -1,16 +1,80 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Shield, Users } from 'lucide-react';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth, db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import googleDriveService from '../services/googleDriveService';
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const [isDriveConnected, setIsDriveConnected] = useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
+
+  // Test Firebase connection
+  useEffect(() => {
+    console.log('=== FIREBASE CONNECTION TEST ===');
+    console.log('Firebase auth object:', auth);
+    console.log('Firebase db object:', db);
+    console.log('Auth current user:', auth.currentUser);
+    console.log('Auth app:', auth.app);
+    console.log('=== END TEST ===');
+  }, []);
+
+  // Check Google Drive connection
+  useEffect(() => {
+    const checkDriveConnection = async () => {
+      try {
+        console.log('Checking Google Drive connection...');
+        
+        // Wait for auto-connection to complete
+        const isConnected = await googleDriveService.waitForConnection();
+        setIsDriveConnected(isConnected);
+        
+        if (isConnected) {
+          console.log('Google Drive is connected and ready');
+        } else {
+          console.log('Google Drive connection failed');
+        }
+      } catch (error) {
+        console.error('Error checking Google Drive connection:', error);
+        setIsDriveConnected(false);
+      }
+    };
+
+    checkDriveConnection();
+  }, []);
+
+  // Handle manual Google Drive sign-in (if needed)
+  const handleGoogleDriveSignIn = async () => {
+    try {
+      console.log('Manual Google Drive sign-in requested...');
+      const success = await googleDriveService.manualSignIn();
+      setIsDriveConnected(success);
+      
+      if (success) {
+        console.log('Manual Google Drive sign-in successful');
+      } else {
+        console.log('Manual Google Drive sign-in failed');
+      }
+    } catch (error) {
+      console.error('Error during manual Google Drive sign-in:', error);
+      setIsDriveConnected(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,14 +82,46 @@ const Login: React.FC = () => {
     setError('');
 
     try {
-      const success = await login(username, password);
-      if (success) {
-        navigate('/dashboard');
-      } else {
-        setError('Invalid username or password. Please try again.');
+      console.log('Attempting to sign in with:', email);
+      
+      // Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      
+      console.log('Sign in successful:', user);
+
+      // Create test user data in Firestore if it doesn't exist
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (!userDoc.exists()) {
+          // Create a test user document
+          const testUserData = {
+            name: 'SK Chairperson',
+            role: 'chairperson',
+            barangay: 'Barangay 123',
+            municipality: 'Manila',
+            province: 'Metro Manila',
+            skTermStart: 2024,
+            skTermEnd: 2026,
+            isFirstLogin: false,
+            createdAt: new Date()
+          };
+          
+          // Note: We'll need to implement this later with proper Firestore write permissions
+          console.log('Would create user data:', testUserData);
+        }
+      } catch (firestoreError) {
+        console.log('Firestore not available yet, continuing without user data');
       }
-    } catch (err) {
-      setError('An error occurred during login. Please try again.');
+
+      // The AuthContext will automatically handle the authentication state change
+      // and redirect to dashboard
+      
+    } catch (err: any) {
+      console.error('Sign in error:', err);
+      setError(`Login failed: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -57,19 +153,19 @@ const Login: React.FC = () => {
             )}
 
             <div>
-              <label htmlFor="username" className="form-label">
-                Username
+              <label htmlFor="email" className="form-label">
+                Email
               </label>
               <div className="relative">
                 <input
-                  id="username"
-                  name="username"
-                  type="text"
+                  id="email"
+                  name="email"
+                  type="email"
                   required
                   className="input-field pl-10"
-                  placeholder="Enter your username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
                 <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               </div>
@@ -119,14 +215,63 @@ const Login: React.FC = () => {
             </div>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
-            <div className="space-y-1 text-xs text-gray-600">
-              <div><strong>Chairperson:</strong> chairperson / password123</div>
-              <div><strong>Treasurer:</strong> treasurer / password123</div>
-              <div><strong>Council Member:</strong> council / password123</div>
+          {/* Google Drive Connection */}
+          <div className="mt-6 p-4 bg-green-50 rounded-lg">
+            <h4 className="text-sm font-medium text-green-700 mb-2">File Storage:</h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-green-600">
+                  {isDriveConnected ? '✅ Google Drive Connected' : '⏳ Connecting to Google Drive...'}
+                </span>
+                {!isDriveConnected && (
+                  <button
+                    type="button"
+                    onClick={handleGoogleDriveSignIn}
+                    className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                  >
+                    Connect Google Drive
+                  </button>
+                )}
+              </div>
+              {isDriveConnected && (
+                <div className="text-xs text-green-600 mt-1">
+                  Connection will persist across sessions
+                </div>
+              )}
+              <div className="text-xs text-green-600">
+                {isDriveConnected 
+                  ? 'Files will be automatically saved to Google Drive' 
+                  : 'Click "Connect Google Drive" to enable file uploads (popup may be blocked)'
+                }
+              </div>
             </div>
+          </div>
+
+          {/* Info for Chairperson */}
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+            <h4 className="text-sm font-medium text-blue-700 mb-2">Note:</h4>
+            <div className="space-y-1 text-xs text-blue-600">
+              <div>
+                <strong>Only the SK Chairperson can create accounts for other members.</strong>
+              </div>
+              <div>
+                Please contact your SK Chairperson if you need an account.
+              </div>
+            </div>
+          </div>
+
+          {/* Public Transparency Link */}
+          <div className="mt-6 text-center">
+            <a href="/transparency-public" className="text-primary-700 hover:underline font-medium">
+              View Public Transparency Portal
+            </a>
+          </div>
+
+          {/* Setup Link */}
+          <div className="mt-4 text-center">
+            <a href="/setup" className="text-secondary-700 hover:underline font-medium text-sm">
+              First time? Setup SK Chairperson Account
+            </a>
           </div>
         </div>
 

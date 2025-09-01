@@ -1,44 +1,274 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html {
-    font-family: 'Inter', system-ui, sans-serif;
-  }
-  
-  body {
-    @apply bg-gray-50 text-gray-900;
-  }
+/* Base styles */
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Custom color palette */
+:root {
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+  
+  --secondary-50: #f8fafc;
+  --secondary-100: #f1f5f9;
+  --secondary-200: #e2e8f0;
+  --secondary-300: #cbd5e1;
+  --secondary-400: #94a3b8;
+  --secondary-500: #64748b;
+  --secondary-600: #475569;
+  --secondary-700: #334155;
+  --secondary-800: #1e293b;
+  --secondary-900: #0f172a;
+  
+  --success-50: #f0fdf4;
+  --success-100: #dcfce7;
+  --success-200: #bbf7d0;
+  --success-300: #86efac;
+  --success-400: #4ade80;
+  --success-500: #22c55e;
+  --success-600: #16a34a;
+  --success-700: #15803d;
+  --success-800: #166534;
+  --success-900: #14532d;
+  
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-200: #fde68a;
+  --warning-300: #fcd34d;
+  --warning-400: #fbbf24;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+  --warning-800: #92400e;
+  --warning-900: #78350f;
+  
+  --danger-50: #fef2f2;
+  --danger-100: #fee2e2;
+  --danger-200: #fecaca;
+  --danger-300: #fca5a5;
+  --danger-400: #f87171;
+  --danger-500: #ef4444;
+  --danger-600: #dc2626;
+  --danger-700: #b91c1c;
+  --danger-800: #991b1b;
+  --danger-900: #7f1d1d;
+}
+
+/* Component styles */
 @layer components {
-  .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
-  }
-  
-  .btn-secondary {
-    @apply bg-secondary-200 hover:bg-secondary-300 text-secondary-800 font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
-  }
-  
-  .btn-success {
-    @apply bg-success-600 hover:bg-success-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-success-500 focus:ring-offset-2;
-  }
-  
-  .btn-danger {
-    @apply bg-danger-600 hover:bg-danger-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-danger-500 focus:ring-offset-2;
-  }
-  
+  /* Card components */
   .card {
-    @apply bg-white rounded-xl shadow-soft border border-gray-200;
+    @apply bg-white rounded-lg shadow-sm border border-gray-200;
+  }
+  
+  .card-header {
+    @apply px-6 py-4 border-b border-gray-200;
+  }
+  
+  .card-body {
+    @apply px-6 py-6;
+  }
+  
+  /* Form components */
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
   }
   
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors duration-200;
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 
+           transition-all duration-200 ease-in-out
+           bg-white;
   }
   
-  .form-label {
-    @apply block text-sm font-medium text-gray-700 mb-2;
+  .input-field::placeholder {
+    @apply text-gray-400;
+  }
+  
+  .input-field:focus::placeholder {
+    @apply text-gray-300;
+  }
+  
+  .input-field:not(:placeholder-shown) {
+    @apply placeholder-transparent;
+  }
+  
+  /* Button components */
+  .btn-primary {
+    @apply inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-medium 
+           rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 
+           focus:ring-primary-500 transition-colors duration-200 disabled:opacity-50 
+           disabled:cursor-not-allowed;
+  }
+  
+  .btn-secondary {
+    @apply inline-flex items-center px-4 py-2 bg-white text-gray-700 text-sm font-medium 
+           border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none 
+           focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors 
+           duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-danger {
+    @apply inline-flex items-center px-4 py-2 bg-danger-600 text-white text-sm font-medium 
+           rounded-lg hover:bg-danger-700 focus:outline-none focus:ring-2 focus:ring-offset-2 
+           focus:ring-danger-500 transition-colors duration-200 disabled:opacity-50 
+           disabled:cursor-not-allowed;
+  }
+  
+  /* Status indicators */
+  .status-active {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+           bg-success-100 text-success-800;
+  }
+  
+  .status-inactive {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+           bg-gray-100 text-gray-800;
+  }
+  
+  /* Navigation */
+  .nav-link {
+    @apply flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors 
+           duration-200;
+  }
+  
+  .nav-link-active {
+    @apply bg-primary-100 text-primary-700;
+  }
+  
+  .nav-link-inactive {
+    @apply text-gray-600 hover:text-gray-900 hover:bg-gray-50;
+  }
+  
+  /* Print styles */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    
+    .print-only {
+      display: block !important;
+    }
+    
+    body {
+      margin: 0;
+      padding: 0;
+    }
+    
+    .print-page {
+      page-break-after: always;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .print-page:last-child {
+      page-break-after: avoid;
+    }
+    
+    /* CBYDP Document Print Styles */
+    .print-content {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    
+    .print-content h1 {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    
+    .print-content h2 {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+      text-align: left;
+    }
+    
+    .print-content p {
+      font-size: 12px;
+      margin-bottom: 4px;
+      text-align: left;
+    }
+    
+    .print-content table {
+      font-size: 10px;
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 12px;
+    }
+    
+    .print-content th,
+    .print-content td {
+      border: 1px solid #000;
+      padding: 4px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    
+    .print-content th {
+      background-color: #f0f0f0;
+      font-weight: bold;
+    }
+    
+    /* Ensure left alignment for specific elements */
+    .print-content .text-left {
+      text-align: left !important;
+    }
+    
+    .print-content .text-center {
+      text-align: center !important;
+    }
+    
+    /* Page breaks */
+    .page-break-before {
+      page-break-before: always;
+    }
+    
+    .page-break-after {
+      page-break-after: always;
+    }
+    
+    /* Hide app chrome during print */
+    header, nav, footer, .no-print {
+      display: none !important;
+    }
+    
+    /* Landscape orientation for legal size */
+    @page {
+      size: 8.5in 13in landscape;
+      margin: 0.5in;
+    }
+    
+    /* Hide all app elements during print */
+    body *:not(.print-content):not(.print-content *) {
+      display: none !important;
+    }
+    
+    /* Ensure print content is visible */
+    .print-content {
+      display: block !important;
+      visibility: visible !important;
+    }
   }
 }

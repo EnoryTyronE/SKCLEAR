@@ -10,6 +10,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
+// Include models
+require_once 'models/SKProfile.php';
+require_once 'models/SKOfficials.php';
+require_once 'models/CBYDP.php';
+require_once 'models/CBYDPCenters.php';
+require_once 'models/CBYDPProjects.php';
+
 // Simple router
 $request_uri = $_SERVER['REQUEST_URI'];
 $path = parse_url($request_uri, PHP_URL_PATH);
@@ -23,21 +30,44 @@ $routes = [
     'POST /api/auth/login' => 'handleLogin',
     'GET /api/user/profile' => 'handleGetProfile',
     'PUT /api/user/profile' => 'handleUpdateProfile',
+    'GET /api/sk/profile' => 'handleGetSKProfile',
     'POST /api/sk/setup' => 'handleSKSetup',
+    'GET /api/sk/officials' => 'handleGetSKOfficials',
+    'POST /api/sk/officials' => 'handleSaveSKOfficials',
     'GET /api/dashboard/stats' => 'handleDashboardStats',
     'GET /api/projects' => 'handleGetProjects',
     'POST /api/projects' => 'handleCreateProject',
     'GET /api/budget' => 'handleGetBudget',
     'POST /api/budget' => 'handleCreateBudget',
+    'POST /api/cbydp' => 'handleSaveCBYDP',
+    'GET /api/cbydp' => 'handleGetCBYDP',
+    'GET /api/cbydp/:id' => 'handleGetCBYDPById',
 ];
 
 // Find matching route
 $route_key = $method . ' ' . $path;
 $handler = $routes[$route_key] ?? null;
 
+// Handle dynamic routes (like /api/cbydp/:id)
+if (!$handler) {
+    foreach ($routes as $route => $route_handler) {
+        $pattern = preg_replace('/:[^\/]+/', '([^/]+)', $route);
+        $pattern = str_replace('/', '\/', $pattern);
+        if (preg_match('/^' . $pattern . '$/', $method . ' ' . $path, $matches)) {
+            $handler = $route_handler;
+            $params = array_slice($matches, 1);
+            break;
+        }
+    }
+}
+
 if ($handler && function_exists($handler)) {
     try {
-        $result = $handler();
+        if (isset($params)) {
+            $result = $handler($params);
+        } else {
+            $result = $handler();
+        }
         echo json_encode($result);
     } catch (Exception $e) {
         http_response_code(500);
@@ -45,7 +75,7 @@ if ($handler && function_exists($handler)) {
     }
 } else {
     http_response_code(404);
-    echo json_encode(['error' => 'Route not found']);
+    echo json_encode(['error' => 'Route not found: ' . $method . ' ' . $path]);
 }
 
 // Handler functions
@@ -140,15 +170,123 @@ function handleUpdateProfile() {
     ];
 }
 
+function handleGetSKProfile() {
+    try {
+        $skProfile = new SKProfile();
+        $profile = $skProfile->getProfile();
+        
+        if ($profile) {
+            return [
+                'success' => true,
+                'profile' => [
+                    'barangayName' => $profile['barangay_name'],
+                    'municipality' => $profile['municipality'],
+                    'province' => $profile['province'],
+                    'region' => $profile['region'],
+                    'barangayLogo' => $profile['barangay_logo'],
+                    'skTermStart' => (int)$profile['sk_term_start'],
+                    'skTermEnd' => (int)$profile['sk_term_end'],
+                    'skFederationPresident' => $profile['sk_federation_president']
+                ]
+            ];
+        } else {
+            return [
+                'success' => false,
+                'message' => 'SK Profile not found'
+            ];
+        }
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error retrieving SK profile: ' . $e->getMessage()
+        ];
+    }
+}
+
 function handleSKSetup() {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    // Mock save - in real app, save to database
-    return [
-        'success' => true,
-        'message' => 'SK information saved successfully',
-        'data' => $input
-    ];
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        $skProfile = new SKProfile();
+        $skOfficials = new SKOfficials();
+        
+        // Save SK Profile
+        $profileData = [
+            'barangayName' => $input['barangayName'],
+            'municipality' => $input['municipality'],
+            'province' => $input['province'],
+            'region' => $input['region'],
+            'barangayLogo' => $input['barangayLogo'],
+            'skTermStart' => $input['skTermStart'],
+            'skTermEnd' => $input['skTermEnd'],
+            'skFederationPresident' => $input['skFederationPresident']
+        ];
+        
+        $profileResult = $skProfile->saveOrUpdate($profileData);
+        
+        // Save SK Officials
+        $officialsResult = $skOfficials->saveOfficials($input['officials']);
+        
+        if ($profileResult && $officialsResult) {
+            return [
+                'success' => true,
+                'message' => 'SK information saved successfully'
+            ];
+        } else {
+            return [
+                'success' => false,
+                'message' => 'Error saving SK information'
+            ];
+        }
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error saving SK setup: ' . $e->getMessage()
+        ];
+    }
+}
+
+function handleGetSKOfficials() {
+    try {
+        $skOfficials = new SKOfficials();
+        $officials = $skOfficials->getAll();
+        
+        return [
+            'success' => true,
+            'officials' => $officials
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error retrieving SK officials: ' . $e->getMessage()
+        ];
+    }
+}
+
+function handleSaveSKOfficials() {
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        $skOfficials = new SKOfficials();
+        $result = $skOfficials->saveOfficials($input['officials']);
+        
+        if ($result) {
+            return [
+                'success' => true,
+                'message' => 'SK officials saved successfully'
+            ];
+        } else {
+            return [
+                'success' => false,
+                'message' => 'Error saving SK officials'
+            ];
+        }
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error saving SK officials: ' . $e->getMessage()
+        ];
+    }
 }
 
 function handleDashboardStats() {
@@ -228,5 +366,136 @@ function handleCreateBudget() {
         'message' => 'Budget allocation saved successfully',
         'budget' => $input
     ];
+}
+
+function handleSaveCBYDP() {
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        $cbydp = new CBYDP();
+        $cbydpCenters = new CBYDPCenters();
+        $cbydpProjects = new CBYDPProjects();
+        
+        // Create or update CBYDP
+        $cbydpData = [
+            'year' => $input['year'],
+            'created_by' => $input['created_by'] ?? 1 // Default to user ID 1 for now
+        ];
+        
+        $cbydpId = $cbydp->create($cbydpData);
+        
+        if ($cbydpId) {
+            // Save centers and their projects
+            foreach ($input['centers'] as $centerIndex => $center) {
+                if (!empty($center['centerName']) && !empty($center['agendaStatement'])) {
+                    // Create center
+                    $centerData = [
+                        'cbydp_id' => $cbydpId,
+                        'center_name' => $center['centerName'],
+                        'agenda_statement' => $center['agendaStatement'],
+                        'sort_order' => $centerIndex
+                    ];
+                    
+                    $centerId = $cbydpCenters->create($centerData);
+                    
+                    if ($centerId && isset($center['projects'])) {
+                        // Save projects for this center
+                        $cbydpProjects->saveProjects($centerId, $center['projects']);
+                    }
+                }
+            }
+            
+            return [
+                'success' => true,
+                'message' => 'CBYDP saved successfully',
+                'cbydp_id' => $cbydpId
+            ];
+        } else {
+            return [
+                'success' => false,
+                'message' => 'Error creating CBYDP'
+            ];
+        }
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error saving CBYDP: ' . $e->getMessage()
+        ];
+    }
+}
+
+function handleGetCBYDP() {
+    try {
+        $cbydp = new CBYDP();
+        $cbydpCenters = new CBYDPCenters();
+        $cbydpProjects = new CBYDPProjects();
+        
+        $cbydpList = $cbydp->getAll();
+        
+        $result = [];
+        foreach ($cbydpList as $cbydpItem) {
+            $centers = $cbydpCenters->getByCBYDPId($cbydpItem['id']);
+            
+            $centersWithProjects = [];
+            foreach ($centers as $center) {
+                $projects = $cbydpProjects->getByCenterId($center['id']);
+                $center['projects'] = $projects;
+                $centersWithProjects[] = $center;
+            }
+            
+            $cbydpItem['centers'] = $centersWithProjects;
+            $result[] = $cbydpItem;
+        }
+        
+        return [
+            'success' => true,
+            'cbydp_list' => $result
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error retrieving CBYDP: ' . $e->getMessage()
+        ];
+    }
+}
+
+function handleGetCBYDPById($params) {
+    try {
+        $cbydpId = $params[0];
+        
+        $cbydp = new CBYDP();
+        $cbydpCenters = new CBYDPCenters();
+        $cbydpProjects = new CBYDPProjects();
+        
+        $cbydpItem = $cbydp->getById($cbydpId);
+        
+        if ($cbydpItem) {
+            $centers = $cbydpCenters->getByCBYDPId($cbydpId);
+            
+            $centersWithProjects = [];
+            foreach ($centers as $center) {
+                $projects = $cbydpProjects->getByCenterId($center['id']);
+                $center['projects'] = $projects;
+                $centersWithProjects[] = $center;
+            }
+            
+            $cbydpItem['centers'] = $centersWithProjects;
+            
+            return [
+                'success' => true,
+                'cbydp' => $cbydpItem
+            ];
+        } else {
+            return [
+                'success' => false,
+                'message' => 'CBYDP not found'
+            ];
+        }
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Error retrieving CBYDP: ' . $e->getMessage()
+        ];
+    }
 }
 ?> 
