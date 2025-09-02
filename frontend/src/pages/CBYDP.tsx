@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP } from '../services/firebaseService';
+import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP, uploadFile } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
@@ -80,7 +80,9 @@ const CBYDP: React.FC = () => {
   const [error, setError] = useState('');
   const [preview, setPreview] = useState(false);
   const [existingCBYDPId, setExistingCBYDPId] = useState<string | null>(null);
+  const [kkProofFile, setKkProofFile] = useState<File | null>(null);
   const [kkProofImage, setKkProofImage] = useState<string>('');
+  const [kkApprovalDate, setKkApprovalDate] = useState<string>('');
   const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -557,26 +559,62 @@ const CBYDP: React.FC = () => {
     }
   };
 
-  const handleKKApproval = async (proofImage: string) => {
+  const handleKKApproval = async () => {
+    if (!kkProofFile) {
+      setError('Please select an image file first');
+      return;
+    }
+
+    if (!kkApprovalDate) {
+      setError('Please select the KK approval date');
+      return;
+    }
+
     setSaving(true);
     setError('');
 
     try {
-      const cbydpData = {
+      // Upload the proof image to Google Drive
+      console.log('Uploading KK proof image to Google Drive...');
+      const imageUrl = await uploadFile(kkProofFile, 'CBYDP_KK_Proof');
+      console.log('Image uploaded successfully:', imageUrl);
+
+      // Create a new approved CBYDP with the Google Drive image URL
+      const approvedCBYDPData = {
         ...form,
         status: 'approved',
         kkApprovedBy: user?.name,
-        kkApprovedAt: new Date(),
-        kkProofImage: proofImage,
+        kkApprovedAt: new Date(kkApprovalDate), // Use the selected approval date
+        kkProofImage: imageUrl, // Store the Google Drive URL
         approvedBy: user?.name,
         approvedAt: new Date(),
+        isEditingOpen: false, // Close editing for approved CBYDP
+        createdBy: user?.name,
+        createdAt: new Date(),
         updatedAt: new Date()
       };
 
-      await updateCBYDP(existingCBYDPId!, cbydpData);
-      setForm(prev => ({ ...prev, ...cbydpData } as CBYDPForm));
+      // Create the new approved CBYDP
+      const newApprovedId = await createCBYDP(approvedCBYDPData);
+      
+      // Delete the old pending CBYDP
+      if (existingCBYDPId) {
+        await deleteCBYDP(existingCBYDPId);
+      }
+
+      // Update the form state with the new approved CBYDP
+      setForm(approvedCBYDPData as CBYDPForm);
+      setExistingCBYDPId(newApprovedId);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      
+             // Close the modal and clear state
+       setShowKKApprovalModal(false);
+       setKkProofImage('');
+       setKkProofFile(null);
+       setKkApprovalDate('');
+      
+      console.log('CBYDP approved successfully with KK proof uploaded to Google Drive');
     } catch (error) {
       console.error('Error approving with KK:', error);
       setError('Failed to approve with KK. Please try again.');
@@ -585,29 +623,63 @@ const CBYDP: React.FC = () => {
     }
   };
 
-  const handleRejectKK = async (reason: string) => {
-    setSaving(true);
-    setError('');
+     const handleRejectKK = async (reason: string) => {
+     setSaving(true);
+     setError('');
 
-    try {
-      const cbydpData = {
-        ...form,
-        status: 'rejected',
-        rejectionReason: reason,
-        updatedAt: new Date()
-      };
+     try {
+       const cbydpData = {
+         ...form,
+         status: 'rejected',
+         rejectionReason: reason,
+         updatedAt: new Date()
+       };
 
-      await updateCBYDP(existingCBYDPId!, cbydpData);
-      setForm(prev => ({ ...prev, ...cbydpData } as CBYDPForm));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
-      console.error('Error rejecting KK approval:', error);
-      setError('Failed to reject KK approval. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
+       await updateCBYDP(existingCBYDPId!, cbydpData);
+       setForm(prev => ({ ...prev, ...cbydpData } as CBYDPForm));
+       setSaved(true);
+       setTimeout(() => setSaved(false), 3000);
+     } catch (error) {
+       console.error('Error rejecting KK approval:', error);
+       setError('Failed to reject KK approval. Please try again.');
+     } finally {
+       setSaving(false);
+     }
+   };
+
+   const handleResetCBYDP = async () => {
+     setSaving(true);
+     setError('');
+
+     try {
+       // Delete the current approved CBYDP
+       if (existingCBYDPId) {
+         await deleteCBYDP(existingCBYDPId);
+         console.log('Current CBYDP deleted successfully');
+       }
+
+       // Reset form to initial state
+       const resetForm: CBYDPForm = {
+         centers: [{ ...defaultCenter }],
+         skMembers: form.skMembers, // Keep SK members
+         showLogoInPrint: true,
+         status: 'not_initiated',
+         isEditingOpen: false,
+       };
+
+       setForm(resetForm);
+       setExistingCBYDPId(null);
+       setSaved(true);
+       setTimeout(() => setSaved(false), 3000);
+
+       console.log('CBYDP reset successfully. You can now create a new one.');
+     } catch (error) {
+       console.error('Error resetting CBYDP:', error);
+       setError('Failed to reset CBYDP. Please try again.');
+     } finally {
+       setSaving(false);
+     }
+   };
 
   return (
     <div className="p-6">
@@ -678,16 +750,29 @@ const CBYDP: React.FC = () => {
                      Last edited by: {form.lastEditedBy}
                    </span>
                  )}
-                 {form.status === 'approved' && form.approvedBy && (
-                   <span className="text-sm text-green-700">
-                     Approved by: {form.approvedBy}
-                   </span>
-                 )}
-                 {form.status === 'rejected' && form.rejectionReason && (
-                   <span className="text-sm text-red-700">
-                     Reason: {form.rejectionReason}
-                   </span>
-                 )}
+                                   {form.status === 'approved' && form.approvedBy && (
+                    <span className="text-sm text-green-700">
+                      Approved by: {form.approvedBy}
+                    </span>
+                  )}
+                  {form.status === 'approved' && form.kkProofImage && (
+                    <div className="mt-2">
+                      <span className="text-sm text-green-700">KK Proof Image:</span>
+                      <div className="mt-1">
+                        <img 
+                          src={form.kkProofImage} 
+                          alt="KK Approval Proof" 
+                          className="w-24 h-24 object-cover rounded border"
+                          style={{ maxWidth: '96px', maxHeight: '96px' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {form.status === 'rejected' && form.rejectionReason && (
+                    <span className="text-sm text-red-700">
+                      Reason: {form.rejectionReason}
+                    </span>
+                  )}
                </div>
              </div>
            </div>
@@ -835,15 +920,40 @@ const CBYDP: React.FC = () => {
               {preview ? 'Edit Mode' : 'Preview'}
             </button>
 
-            {/* Refresh Button - Available to all */}
-            <button
-              onClick={handleRefresh}
-              disabled={saving}
-              className="btn-secondary flex items-center"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </button>
+                         {/* Refresh Button - Available to all */}
+             <button
+               onClick={handleRefresh}
+               disabled={saving}
+               className="btn-secondary flex items-center"
+             >
+               <RefreshCw className="h-4 w-4 mr-2" />
+               Refresh
+             </button>
+
+             {/* Reset CBYDP Button - Only for Chairperson when approved */}
+             {user?.role === 'chairperson' && form.status === 'approved' && (
+               <button
+                 onClick={() => {
+                   if (window.confirm('Are you sure you want to reset this approved CBYDP? This will delete the current one and allow you to create a new one.')) {
+                     handleResetCBYDP();
+                   }
+                 }}
+                 disabled={saving}
+                 className="btn-danger flex items-center"
+               >
+                 {saving ? (
+                   <>
+                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                     Resetting...
+                   </>
+                 ) : (
+                   <>
+                     <Trash2 className="h-4 w-4 mr-2" />
+                     Reset CBYDP
+                   </>
+                 )}
+               </button>
+             )}
          </div>
 
          <div className="flex items-center space-x-4">
@@ -1374,26 +1484,62 @@ const CBYDP: React.FC = () => {
                Please upload proof of Katipunan ng Kabataan approval for this CBYDP.
              </p>
              
-             <div className="mb-4">
-               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 Upload Proof Image
-               </label>
-               <input
-                 type="file"
-                 accept="image/*"
-                 onChange={(e) => {
-                   const file = e.target.files?.[0];
-                   if (file) {
-                     const reader = new FileReader();
-                     reader.onload = (e) => {
-                       setKkProofImage(e.target?.result as string);
-                     };
-                     reader.readAsDataURL(file);
-                   }
-                 }}
-                 className="w-full border border-gray-300 rounded-md px-3 py-2"
-               />
-             </div>
+                           <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Upload Proof Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      // Validate file size (max 5MB)
+                      if (file.size > 5 * 1024 * 1024) {
+                        setError('Image file size must be less than 5MB');
+                        return;
+                      }
+                      
+                      // Validate file type
+                      if (!file.type.startsWith('image/')) {
+                        setError('Please select a valid image file');
+                        return;
+                      }
+                      
+                      // Store the file object for upload
+                      setKkProofFile(file);
+                      
+                      // Create preview for display
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        setKkProofImage(e.target?.result as string);
+                        setError(''); // Clear any previous errors
+                      };
+                      reader.onerror = () => {
+                        setError('Failed to read image file');
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  KK Approval Date
+                </label>
+                <input
+                  type="date"
+                  value={kkApprovalDate}
+                  onChange={(e) => setKkApprovalDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Select the date when Katipunan ng Kabataan approved this CBYDP
+                </p>
+              </div>
 
              {kkProofImage && (
                <div className="mb-4">
@@ -1406,28 +1552,24 @@ const CBYDP: React.FC = () => {
              )}
 
              <div className="flex space-x-3">
-               <button
-                 onClick={() => {
-                   if (kkProofImage) {
-                     handleKKApproval(kkProofImage);
-                     setShowKKApprovalModal(false);
-                     setKkProofImage('');
-                   }
-                 }}
-                 disabled={!kkProofImage || saving}
-                 className="btn-primary flex-1"
-               >
-                 {saving ? 'Approving...' : 'Approve with KK'}
-               </button>
-               <button
-                 onClick={() => {
-                   setShowKKApprovalModal(false);
-                   setKkProofImage('');
-                 }}
-                 className="btn-secondary flex-1"
-               >
-                 Cancel
-               </button>
+                               <button
+                  onClick={handleKKApproval}
+                  disabled={!kkProofFile || !kkApprovalDate || saving}
+                  className="btn-primary flex-1"
+                >
+                  {saving ? 'Approving...' : 'Approve with KK'}
+                </button>
+                               <button
+                  onClick={() => {
+                    setShowKKApprovalModal(false);
+                    setKkProofImage('');
+                    setKkProofFile(null);
+                    setKkApprovalDate('');
+                  }}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
              </div>
           </div>
         </div>
