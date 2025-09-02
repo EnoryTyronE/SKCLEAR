@@ -167,8 +167,38 @@ body {
   }
   
   .sidebar-collapsed .nav-item .nav-link {
-    @apply px-2 py-3;
+  @apply px-2 py-3;
+}
+
+/* Print styles for CBYDP */
+@media print {
+  .print-content {
+    width: 8.5in !important;
+    height: 13in !important;
+    margin: 0 !important;
+    padding: 0.5in !important;
+    font-size: 10pt !important;
+    line-height: 1.2 !important;
   }
+  
+  .print-content table {
+    font-size: 8pt !important;
+  }
+  
+  .print-content th,
+  .print-content td {
+    padding: 2px 4px !important;
+  }
+  
+  .page-break-before {
+    page-break-before: always;
+  }
+  
+  /* Hide non-printable elements */
+  .no-print {
+    display: none !important;
+  }
+}
   
   /* Print styles */
   @media print {

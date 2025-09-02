@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { createCBYDP, getCBYDP, updateCBYDP } from '../services/firebaseService';
+import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
@@ -29,15 +29,18 @@ interface SKMember {
 }
 
 interface CBYDPForm {
-  region: string;
-  province: string;
-  city: string;
-  barangay: string;
   centers: CBYDCenter[];
   skMembers: SKMember[];
-  federationPresident: string;
   showLogoInPrint: boolean;
-  status: 'draft' | 'pending_approval' | 'approved' | 'rejected';
+  status: 'not_initiated' | 'open_for_editing' | 'pending_kk_approval' | 'approved' | 'rejected';
+  isEditingOpen: boolean;
+  initiatedBy?: string;
+  initiatedAt?: Date;
+  closedBy?: string;
+  closedAt?: Date;
+  kkApprovedBy?: string;
+  kkApprovedAt?: Date;
+  kkProofImage?: string;
   lastEditedBy?: string;
   lastEditedAt?: Date;
   approvedBy?: string;
@@ -66,38 +69,22 @@ const defaultCenter: CBYDCenter = {
 const CBYDP: React.FC = () => {
   const { user, skProfile } = useAuth();
   const [form, setForm] = useState<CBYDPForm>({
-    region: skProfile?.region || '',
-    province: skProfile?.province || user?.province || '',
-    city: skProfile?.city || user?.municipality || '',
-    barangay: skProfile?.barangay || user?.barangay || '',
     centers: [{ ...defaultCenter }],
     skMembers: [],
-    federationPresident: skProfile?.federationPresident || '',
     showLogoInPrint: true,
-    status: 'draft',
+    status: 'not_initiated',
+    isEditingOpen: false,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState(false);
   const [existingCBYDPId, setExistingCBYDPId] = useState<string | null>(null);
+  const [kkProofImage, setKkProofImage] = useState<string>('');
+  const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  // Fetch existing CBYDP and SK members
-  useEffect(() => {
-    loadExistingCBYDP();
-    loadSKMembers();
-  }, []);
-
-  // Reload CBYDP when user changes (in case of switching accounts)
-  useEffect(() => {
-    if (user) {
-      console.log('User changed, reloading CBYDP for:', user.name);
-      loadExistingCBYDP();
-    }
-  }, [user?.uid]);
-
-  const loadExistingCBYDP = async () => {
+  const loadExistingCBYDP = useCallback(async () => {
     try {
       console.log('Loading existing CBYDP for user:', user?.name, user?.role);
       const existingCBYDP = await getCBYDP();
@@ -115,7 +102,21 @@ const CBYDP: React.FC = () => {
     } catch (error) {
       console.error('Error loading CBYDP:', error);
     }
-  };
+  }, [user?.name, user?.role]);
+
+  // Fetch existing CBYDP and SK members
+  useEffect(() => {
+    loadExistingCBYDP();
+    loadSKMembers();
+  }, [loadExistingCBYDP]);
+
+  // Reload CBYDP when user changes (in case of switching accounts)
+  useEffect(() => {
+    if (user) {
+      console.log('User changed, reloading CBYDP for:', user.name);
+      loadExistingCBYDP();
+    }
+    }, [user?.uid, loadExistingCBYDP]);
 
   const loadSKMembers = async () => {
     try {
@@ -374,6 +375,7 @@ const CBYDP: React.FC = () => {
         ...form,
         lastEditedBy: user?.name,
         lastEditedAt: new Date(),
+        createdBy: user?.name, // Add createdBy field
         updatedAt: new Date()
       };
 
@@ -401,86 +403,85 @@ const CBYDP: React.FC = () => {
     }
   };
 
-  const handleSubmitForApproval = async () => {
-    setSaving(true);
-    setError('');
 
-    try {
-      const cbydpData = {
-        ...form,
-        status: 'pending_approval',
-        lastEditedBy: user?.name,
-        lastEditedAt: new Date(),
-        updatedAt: new Date()
-      };
 
-      await updateCBYDP(existingCBYDPId!, cbydpData);
-      setForm(prev => ({ ...prev, status: 'pending_approval' }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
-      console.error('Error submitting for approval:', error);
-      setError('Failed to submit for approval. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
 
-  const handleApprove = async () => {
-    setSaving(true);
-    setError('');
 
-    try {
-      const cbydpData = {
-        ...form,
-        status: 'approved',
-        approvedBy: user?.name,
-        approvedAt: new Date(),
-        updatedAt: new Date()
-      };
 
-      await updateCBYDP(existingCBYDPId!, cbydpData);
-      setForm(prev => ({ ...prev, status: 'approved' }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
-      console.error('Error approving CBYDP:', error);
-      setError('Failed to approve CBYDP. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReject = async (reason: string) => {
-    setSaving(true);
-    setError('');
-
-    try {
-      const cbydpData = {
-        ...form,
-        status: 'rejected',
-        rejectionReason: reason,
-        approvedBy: user?.name,
-        approvedAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      await updateCBYDP(existingCBYDPId!, cbydpData);
-      setForm(prev => ({ ...prev, status: 'rejected', rejectionReason: reason }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
-      console.error('Error rejecting CBYDP:', error);
-      setError('Failed to reject CBYDP. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handlePrint = () => {
-    if (printRef.current) {
-      window.print();
+    const performPrint = () => {
+      if (!printRef.current) return;
+      const printContents = printRef.current.innerHTML;
+      const title = document.title || 'Print';
+      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map((el) => el.outerHTML)
+        .join('\n');
+
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+      doc.open();
+      doc.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <base href="${window.location.origin}/" />
+    <title>${title}</title>
+    ${styles}
+    <style>
+      @page { size: 13in 8.5in; margin: 8mm; }
+      html, body { background: white; }
+      .print-content { width: 13in !important; min-height: 8.5in !important; padding: 18px; }
+      table { page-break-inside: avoid; }
+    </style>
+  </head>
+  <body>
+    <div class="print-content">${printContents}</div>
+    <script>
+      (function(){
+        function waitForImages() {
+          const imgs = Array.from(document.images || []);
+          if (imgs.length === 0) return Promise.resolve();
+          return Promise.all(imgs.map(img => new Promise(res => {
+            if (img.complete) return res();
+            img.onload = img.onerror = () => res();
+          })));
+        }
+        Promise.resolve()
+          .then(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null)
+          .then(() => waitForImages())
+          .then(() => { setTimeout(() => { window.focus(); window.print(); }, 200); });
+      })();
+    </script>
+  </body>
+</html>`);
+      doc.close();
+
+      // Cleanup the iframe after some time
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch (_) {} }, 5000);
+    };
+
+    // Ensure the preview content exists before printing
+    if (!printRef.current) {
+      const wasPreview = preview;
+      if (!wasPreview) setPreview(true);
+      setTimeout(() => {
+        performPrint();
+        if (!wasPreview) setTimeout(() => setPreview(false), 300);
+      }, 300);
+      return;
     }
+
+    performPrint();
   };
 
   const handleRefresh = async () => {
@@ -489,8 +490,135 @@ const CBYDP: React.FC = () => {
     await loadSKMembers();
   };
 
+  // New workflow functions
+  const handleInitiateCBYDP = async () => {
+    setSaving(true);
+    setError('');
+
+    try {
+      // If this is a re-initiation (status is rejected), delete the old CBYDP first
+      if (form.status === 'rejected' && existingCBYDPId) {
+        console.log('Deleting old rejected CBYDP:', existingCBYDPId);
+        await deleteCBYDP(existingCBYDPId);
+        setExistingCBYDPId(null);
+      }
+
+      // Create fresh CBYDP data
+      const cbydpData = {
+        centers: [{ ...defaultCenter }], // Start with fresh default center
+        skMembers: form.skMembers, // Keep SK members
+        showLogoInPrint: true,
+        status: 'open_for_editing',
+        isEditingOpen: true,
+        initiatedBy: user?.name,
+        initiatedAt: new Date(),
+        createdBy: user?.name,
+        updatedAt: new Date()
+      };
+
+      // Always create a new CBYDP (since we deleted the old one if it existed)
+      const newId = await createCBYDP(cbydpData);
+      setExistingCBYDPId(newId);
+
+      setForm(cbydpData as CBYDPForm);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error initiating CBYDP:', error);
+      setError('Failed to initiate CBYDP. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCloseEditing = async () => {
+    setSaving(true);
+    setError('');
+
+    try {
+      const cbydpData = {
+        ...form,
+        status: 'pending_kk_approval',
+        isEditingOpen: false,
+        closedBy: user?.name,
+        closedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await updateCBYDP(existingCBYDPId!, cbydpData);
+      setForm(prev => ({ ...prev, ...cbydpData } as CBYDPForm));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error closing editing period:', error);
+      setError('Failed to close editing period. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKKApproval = async (proofImage: string) => {
+    setSaving(true);
+    setError('');
+
+    try {
+      const cbydpData = {
+        ...form,
+        status: 'approved',
+        kkApprovedBy: user?.name,
+        kkApprovedAt: new Date(),
+        kkProofImage: proofImage,
+        approvedBy: user?.name,
+        approvedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await updateCBYDP(existingCBYDPId!, cbydpData);
+      setForm(prev => ({ ...prev, ...cbydpData } as CBYDPForm));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error approving with KK:', error);
+      setError('Failed to approve with KK. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRejectKK = async (reason: string) => {
+    setSaving(true);
+    setError('');
+
+    try {
+      const cbydpData = {
+        ...form,
+        status: 'rejected',
+        rejectionReason: reason,
+        updatedAt: new Date()
+      };
+
+      await updateCBYDP(existingCBYDPId!, cbydpData);
+      setForm(prev => ({ ...prev, ...cbydpData } as CBYDPForm));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error rejecting KK approval:', error);
+      setError('Failed to reject KK approval. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="p-6">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .print-content, .print-content * { visibility: visible; }
+          .print-content { position: absolute; left: 0; top: 0; width: 13in; min-height: 8.5in; background: white; transform: scale(1.03); transform-origin: top left; }
+          @page { size: 13in 8.5in; margin: 8mm; }
+        }
+      `}</style>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">CBYDP Creation</h1>
         <p className="text-gray-600">Create Comprehensive Barangay Youth Development Plan</p>
@@ -519,15 +647,32 @@ const CBYDP: React.FC = () => {
                <h3 className="font-semibold text-blue-900">CBYDP Status</h3>
                <div className="flex items-center space-x-4 mt-2">
                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                   form.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                   form.status === 'pending_approval' ? 'bg-yellow-100 text-yellow-800' :
+                    form.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
+                    form.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
+                    form.status === 'pending_kk_approval' ? 'bg-yellow-100 text-yellow-800' :
                    form.status === 'approved' ? 'bg-green-100 text-green-800' :
                    'bg-red-100 text-red-800'
                  }`}>
-                   {form.status === 'draft' ? 'Draft' :
-                    form.status === 'pending_approval' ? 'Pending Approval' :
+                    {form.status === 'not_initiated' ? 'Not Initiated' :
+                     form.status === 'open_for_editing' ? 'Open for Editing' :
+                     form.status === 'pending_kk_approval' ? 'Pending KK Approval' :
                     form.status === 'approved' ? 'Approved' : 'Rejected'}
                  </span>
+                                   {form.initiatedBy && (
+                    <span className="text-sm text-blue-700">
+                      Initiated by: {form.initiatedBy}
+                    </span>
+                  )}
+                  {form.closedBy && (
+                    <span className="text-sm text-blue-700">
+                      Closed by: {form.closedBy}
+                    </span>
+                  )}
+                  {form.kkApprovedBy && (
+                    <span className="text-sm text-green-700">
+                      KK Approved by: {form.kkApprovedBy}
+                    </span>
+                  )}
                  {form.lastEditedBy && (
                    <span className="text-sm text-blue-700">
                      Last edited by: {form.lastEditedBy}
@@ -552,7 +697,50 @@ const CBYDP: React.FC = () => {
              {/* Action Buttons */}
        <div className="mb-6 flex justify-between items-center">
          <div className="flex space-x-3">
-           {/* Save Button - Available to all members */}
+                         {/* Initiate CBYDP - Only for Chairperson when not initiated */}
+             {user?.role === 'chairperson' && form.status === 'not_initiated' && (
+               <button
+                 onClick={handleInitiateCBYDP}
+                 disabled={saving}
+                 className="btn-primary flex items-center"
+               >
+                 {saving ? (
+                   <>
+                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                     Initiating...
+                   </>
+                 ) : (
+                   <>
+                     <FileText className="h-4 w-4 mr-2" />
+                     Initiate CBYDP
+                   </>
+                 )}
+               </button>
+             )}
+
+             {/* Re-initiate CBYDP - Only for Chairperson when rejected */}
+             {user?.role === 'chairperson' && form.status === 'rejected' && (
+               <button
+                 onClick={handleInitiateCBYDP}
+                 disabled={saving}
+                 className="btn-primary flex items-center"
+               >
+                 {saving ? (
+                   <>
+                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                     Re-initiating...
+                   </>
+                 ) : (
+                   <>
+                     <FileText className="h-4 w-4 mr-2" />
+                     Re-initiate CBYDP
+                   </>
+                 )}
+               </button>
+             )}
+
+            {/* Save Button - Available to all members when editing is open */}
+            {form.isEditingOpen && (
            <button
              onClick={handleSave}
              disabled={saving || form.status === 'approved'}
@@ -570,33 +758,34 @@ const CBYDP: React.FC = () => {
                </>
              )}
            </button>
+            )}
 
-           {/* Submit for Approval - Available to all members except chairperson */}
-           {user?.role !== 'chairperson' && form.status === 'draft' && existingCBYDPId && (
+            {/* Close Editing Period - Only for Chairperson when open for editing */}
+            {user?.role === 'chairperson' && form.status === 'open_for_editing' && (
              <button
-               onClick={handleSubmitForApproval}
+                onClick={handleCloseEditing}
                disabled={saving}
                className="btn-secondary flex items-center"
              >
                {saving ? (
                  <>
                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
-                   Submitting...
+                    Closing...
                  </>
                ) : (
                  <>
-                   <FileText className="h-4 w-4 mr-2" />
-                   Submit for Approval
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Close Editing Period
                  </>
                )}
              </button>
            )}
 
-           {/* Approval Actions - Only for Chairperson */}
-           {user?.role === 'chairperson' && form.status === 'pending_approval' && (
+            {/* KK Approval Actions - Only for Chairperson when pending KK approval */}
+            {user?.role === 'chairperson' && form.status === 'pending_kk_approval' && (
              <>
                <button
-                 onClick={handleApprove}
+                  onClick={() => setShowKKApprovalModal(true)}
                  disabled={saving}
                  className="btn-primary flex items-center bg-green-600 hover:bg-green-700"
                >
@@ -608,7 +797,7 @@ const CBYDP: React.FC = () => {
                  ) : (
                    <>
                      <CheckCircle className="h-4 w-4 mr-2" />
-                     Approve
+                      Approve with KK
                    </>
                  )}
                </button>
@@ -616,7 +805,7 @@ const CBYDP: React.FC = () => {
                  onClick={() => {
                    const reason = prompt('Please provide a reason for rejection:');
                    if (reason) {
-                     handleReject(reason);
+                      handleRejectKK(reason);
                    }
                  }}
                  disabled={saving}
@@ -684,173 +873,298 @@ const CBYDP: React.FC = () => {
                 Print
               </button>
             </div>
-            <div ref={printRef} className="print-content">
-              {/* Header */}
-              <div className="text-center mb-8">
-                {form.showLogoInPrint && skProfile?.logo && (
-                  <img 
-                    src={skProfile.logo} 
-                    alt="Barangay Logo" 
-                    className="h-16 w-16 mx-auto mb-4"
-                  />
-                )}
-                <h1 className="text-2xl font-bold mb-2">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN</h1>
-                <p className="text-lg font-semibold mb-1">{form.barangay}, {form.city}, {form.province}</p>
-                <p className="text-lg">Year {new Date().getFullYear()}</p>
-              </div>
+                                                   <div ref={printRef} className="print-content bg-white p-8" style={{ width: '13in', minHeight: '8.5in' }}>
+              {/* Multipage print: one page per center */}
+              {form.centers.map((center, ci) => (
+                <div key={ci} style={{ pageBreakAfter: 'always' }}>
+                  {/* Header */}
+                  <div className="mb-6" style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: 0, right: 0 }}>
+                      <div className="text-xs font-semibold border border-gray-700 px-2 py-1">Annex "A"</div>
+                    </div>
 
-              {/* Centers of Participation */}
-              {form.centers.map((center, centerIdx) => (
-                <div key={centerIdx} className="mb-8">
-                  <div className="text-left mb-4">
-                    <h2 className="text-xl font-bold mb-2">Center of Participation: {center.name}</h2>
-                    <p className="text-left"><strong>Agenda Statement:</strong> {center.agenda}</p>
+                    {/* Barangay Logo */}
+                    {form.showLogoInPrint && skProfile?.logo && (
+                      <div className="w-full flex justify-center mb-2">
+                        <img src={skProfile.logo} alt="Barangay Logo" style={{ width: '0.9in', height: '0.9in', objectFit: 'cover' }} />
+                      </div>
+                    )}
+
+                    {/* Barangay + SK */}
+                    <div className="text-center leading-tight mb-2">
+                      <div className="text-sm font-semibold">
+                        Barangay
+                        <span style={{ display: 'inline-block', minWidth: '2.8in', borderBottom: '1px solid #000', marginLeft: '6px' }}>
+                          {skProfile?.barangay || '\u00A0'}
+                        </span>
+                      </div>
+                      <div className="text-sm font-semibold">Sangguniang Kabataan</div>
+                    </div>
+
+                    {/* Title */}
+                    <div className="text-center mb-2">
+                      <div className="text-sm font-semibold">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP)</div>
+                    </div>
+
+                    {/* Region / Province / City */}
+                    <div className="text-xs mb-1" style={{ width: '100%' }}>
+                      <div className="flex items-center mb-1">
+                        <span className="mr-2">Region:</span>
+                        <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <span className="mr-2">Province:</span>
+                          <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
+                        </div>
+                        <div className="flex items-center" style={{ marginLeft: '0.5in' }}>
+                          <span className="mr-2">City/Municipality:</span>
+                          <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CBYDP CY ______ - ______ */}
+                    <div className="text-center text-xs my-2">
+                      <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
+                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
+                        {skProfile?.skTermStart || '\u00A0'}
+                      </span>
+                      <span>-</span>
+                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', marginLeft: '0.1in' }}>
+                        {skProfile?.skTermEnd || '\u00A0'}
+                      </span>
+                    </div>
+
+                    {/* Center of Participation line */}
+                    <div className="text-xs mb-1">
+                      <span className="font-semibold">CENTER OF PARTICIPATION:</span>
+                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '3.0in', marginLeft: '0.1in' }}>
+                        {center.name || '\u00A0'}
+                      </span>
+                    </div>
+
+                    {/* Agenda Statement rule */}
+                    <div className="text-xs mb-2">
+                      <div className="mb-1">Agenda Statement:</div>
+                      <div style={{ borderTop: '1px solid #000', width: '100%' }} />
+                    </div>
                   </div>
-                  
-                  <table className="w-full border-collapse border border-gray-300 mb-6">
+
+                  {/* Center's Projects table */}
+                  <table className="w-full border border-gray-700" style={{ borderCollapse: 'collapse', fontSize: '9pt' }}>
                     <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Concern</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Objective</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Indicator</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Target 1</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Target 2</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Target 3</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">PPAs</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Budget</th>
-                        <th className="border border-gray-300 p-2 text-left text-sm font-semibold">Responsible</th>
+                      <tr>
+                        <th style={{ width: '1.2in' }} className="border border-gray-700 p-1 text-left">Youth Development Concern</th>
+                        <th style={{ width: '1.4in' }} className="border border-gray-700 p-1 text-left">Objective</th>
+                        <th style={{ width: '1.3in' }} className="border border-gray-700 p-1 text-left">Performance Indicator</th>
+                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
+                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
+                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
+                        <th style={{ width: '1.2in' }} className="border border-gray-700 p-1 text-left">PPAs</th>
+                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Budget</th>
+                        <th style={{ width: '1.1in' }} className="border border-gray-700 p-1 text-left">Person Responsible</th>
+                      </tr>
+                      <tr>
+                        <th className="border border-gray-700 p-1"></th>
+                        <th className="border border-gray-700 p-1"></th>
+                        <th className="border border-gray-700 p-1"></th>
+                        <th className="border border-gray-700 p-1 text-center">[Year 1]</th>
+                        <th className="border border-gray-700 p-1 text-center">[Year 2]</th>
+                        <th className="border border-gray-700 p-1 text-center">[Year 3]</th>
+                        <th className="border border-gray-700 p-1"></th>
+                        <th className="border border-gray-700 p-1"></th>
+                        <th className="border border-gray-700 p-1"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {center.projects.map((project, projectIdx) => (
-                        <tr key={projectIdx}>
-                          <td className="border border-gray-300 p-2 text-sm">{project.concern}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.objective}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.indicator}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.target1}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.target2}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.target3}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.ppas}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.budget}</td>
-                          <td className="border border-gray-300 p-2 text-sm">{project.responsible}</td>
+                      {center.projects.map((project, pi) => (
+                        <tr key={`${ci}-${pi}`}>
+                          <td className="border border-gray-700 p-1 align-top">{project.concern}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.objective}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.indicator}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.target1}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.target2}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.target3}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.ppas}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.budget}</td>
+                          <td className="border border-gray-700 p-1 align-top">{project.responsible}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+
+                  {/* Prepared by (shown on every page, secretary & chair only) */}
+                  <div className="mt-6">
+                    <div className="text-center text-xs font-semibold mb-2">Prepared by:</div>
+                    <div className="flex justify-around text-center">
+                      <div style={{ width: '3in' }}>
+                        <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                          <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Secretary')?.name || ''}</div>
+                        </div>
+                        <div className="text-xs mt-1">SK Secretary</div>
+                      </div>
+                      <div style={{ width: '3in' }}>
+                        <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                          <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Chairperson')?.name || ''}</div>
+                        </div>
+                        <div className="text-xs mt-1">SK Chairperson</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
 
-              {/* Prepared By Section - Last Page */}
-              <div className="page-break-before">
-                <div className="mt-8">
-                  <p className="text-left mb-4"><strong>Prepared by:</strong></p>
-                  
-                  {/* SK Members */}
-                  <div className="grid grid-cols-2 gap-6 mb-6">
-                    {form.skMembers.map((member, idx) => (
-                      <div key={idx} className="text-center">
-                        <div className="border-b-2 border-gray-400 pb-1 mb-2">
-                          <p className="font-semibold text-sm">{member.name}</p>
-                        </div>
-                        <p className="text-xs text-gray-600">{member.position}</p>
-                      </div>
-                    ))}
+              {/* Always-last page: Header + Prepared by + Members + SK Federation */}
+              <div style={{ pageBreakBefore: 'always' }}>
+                {/* Header */}
+                <div className="mb-6" style={{ position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 0, right: 0 }}>
+                    <div className="text-xs font-semibold border border-gray-700 px-2 py-1">Annex "A"</div>
                   </div>
-                  
-                  {/* Federation President */}
-                  <div className="text-center mt-8">
-                    <div className="border-b-2 border-gray-400 pb-1 mb-2 inline-block">
-                      <p className="font-semibold text-sm">{form.federationPresident}</p>
+
+                  {/* Barangay Logo */}
+                  {form.showLogoInPrint && skProfile?.logo && (
+                    <div className="w-full flex justify-center mb-2">
+                      <img src={skProfile.logo} alt="Barangay Logo" style={{ width: '0.9in', height: '0.9in', objectFit: 'cover' }} />
                     </div>
-                    <p className="text-xs text-gray-600">SK Federation President</p>
+                  )}
+
+                  {/* Barangay + SK */}
+                  <div className="text-center leading-tight mb-2">
+                    <div className="text-sm font-semibold">
+                      Barangay
+                      <span style={{ display: 'inline-block', minWidth: '2.8in', borderBottom: '1px solid #000', marginLeft: '6px' }}>
+                        {skProfile?.barangay || '\u00A0'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-semibold">Sangguniang Kabataan</div>
+                  </div>
+
+                  {/* Title */}
+                  <div className="text-center mb-2">
+                    <div className="text-sm font-semibold">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP)</div>
+                  </div>
+
+                  {/* Region / Province / City */}
+                  <div className="text-xs mb-1" style={{ width: '100%' }}>
+                    <div className="flex items-center mb-1">
+                      <span className="mr-2">Region:</span>
+                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <span className="mr-2">Province:</span>
+                        <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
+                      </div>
+                      <div className="flex items-center" style={{ marginLeft: '0.5in' }}>
+                        <span className="mr-2">City/Municipality:</span>
+                        <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CBYDP CY ______ - ______ */}
+                  <div className="text-center text-xs my-2">
+                    <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
+                    <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
+                      {skProfile?.skTermStart || '\u00A0'}
+                    </span>
+                    <span>-</span>
+                    <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', marginLeft: '0.1in' }}>
+                      {skProfile?.skTermEnd || '\u00A0'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Prepared by (final signatures page) */}
+                <div className="mt-6">
+                  <div className="text-center text-xs font-semibold mb-2">Prepared by:</div>
+                  {/* Secretary and Chairperson side-by-side */}
+                  <div className="flex justify-around text-center mb-6">
+                    <div style={{ width: '3in' }}>
+                      <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                        <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Secretary')?.name || ''}</div>
+                      </div>
+                      <div className="text-xs mt-1">SK Secretary</div>
+                    </div>
+                    <div style={{ width: '3in' }}>
+                      <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                        <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Chairperson')?.name || ''}</div>
+                      </div>
+                      <div className="text-xs mt-1">SK Chairperson</div>
+                    </div>
+                  </div>
+
+                                      {/* SK Members list (two columns of signature lines) */}
+                    <div className="text-xs font-semibold mb-2">SK Members:</div>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      {form.skMembers
+                        .filter(m => m.position !== 'SK Secretary' && m.position !== 'SK Chairperson' && m.position !== 'SK Treasurer')
+                        .map((m, idx) => (
+                          <div key={idx} className="text-center">
+                            <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                              <div className="text-xs">{m.name || ''}</div>
+                            </div>
+                            <div className="text-xs mt-1">{m.position || 'SK Member'}</div>
+                          </div>
+                        ))}
+                    </div>
+
+                  {/* SK Federation centered below members */}
+                  <div className="text-center mt-6">
+                    <div style={{ width: '3in', margin: '0 auto' }}>
+                      <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                        <div className="text-xs">{skProfile?.federationPresident || form.skMembers.find(m => (m.position || '').toLowerCase().includes('federation'))?.name || ''}</div>
+                      </div>
+                      <div className="text-xs mt-1">SK Federation President</div>
+                    </div>
                   </div>
                 </div>
               </div>
+              
+              </div>
             </div>
           </div>
-        </div>
              ) : (
          <div className="space-y-6">
-           {/* Edit Restriction Notice */}
+                       {/* Workflow Status Notices */}
+            {form.status === 'not_initiated' && (
+              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg flex items-center">
+                <AlertCircle className="h-5 w-5 mr-2" />
+                CBYDP has not been initiated yet. The SK Chairperson must initiate the CBYDP to begin the process.
+              </div>
+            )}
+
+            {form.status === 'open_for_editing' && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg flex items-center">
+                <CheckCircle className="h-5 w-5 mr-2" />
+                CBYDP is open for editing. All SK members can add and edit centers and projects.
+              </div>
+            )}
+
+            {form.status === 'pending_kk_approval' && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg flex items-center">
+                <AlertCircle className="h-5 w-5 mr-2" />
+                CBYDP is pending Katipunan ng Kabataan approval. The SK Chairperson must upload proof of KK approval.
+              </div>
+            )}
+
            {form.status === 'approved' && (
              <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center">
                <CheckCircle className="h-5 w-5 mr-2" />
-               This CBYDP has been approved and is now read-only. Contact the chairperson if changes are needed.
+                This CBYDP has been approved by Katipunan ng Kabataan and is now read-only.
              </div>
            )}
 
            {form.status === 'rejected' && (
              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center">
                <AlertCircle className="h-5 w-5 mr-2" />
-               This CBYDP was rejected. Reason: {form.rejectionReason}. Please make necessary changes and resubmit.
+                 This CBYDP was rejected. Reason: {form.rejectionReason}. The SK Chairperson can re-initiate the CBYDP to start the process again.
              </div>
            )}
 
-           {/* Basic Information */}
-           <div className="card">
-            <div className="card-header">
-              <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
-            </div>
-            <div className="card-body">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Region</label>
-                                     <input
-                     type="text"
-                     value={form.region}
-                     onChange={(e) => handleChange('region', e.target.value)}
-                     className="input-field"
-                     required
-                     disabled={form.status === 'approved'}
-                   />
-                </div>
-                                 <div>
-                   <label className="form-label">Province</label>
-                   <input
-                     type="text"
-                     value={form.province}
-                     onChange={(e) => handleChange('province', e.target.value)}
-                     className="input-field"
-                     required
-                     disabled={form.status === 'approved'}
-                   />
-                 </div>
-                 <div>
-                   <label className="form-label">City/Municipality</label>
-                   <input
-                     type="text"
-                     value={form.city}
-                     onChange={(e) => handleChange('city', e.target.value)}
-                     className="input-field"
-                     required
-                     disabled={form.status === 'approved'}
-                   />
-                 </div>
-                 <div>
-                   <label className="form-label">Barangay</label>
-                   <input
-                     type="text"
-                     value={form.barangay}
-                     onChange={(e) => handleChange('barangay', e.target.value)}
-                     className="input-field"
-                     required
-                     disabled={form.status === 'approved'}
-                   />
-                 </div>
-                 <div>
-                   <label className="form-label">SK Federation President</label>
-                   <input
-                     type="text"
-                     value={form.federationPresident}
-                     onChange={(e) => handleChange('federationPresident', e.target.value)}
-                     className="input-field"
-                     required
-                     disabled={form.status === 'approved'}
-                   />
-                 </div>
-              </div>
-            </div>
-          </div>
+
 
           {/* Centers of Participation */}
           <div className="space-y-4">
@@ -883,6 +1197,7 @@ const CBYDP: React.FC = () => {
                         className="input-field"
                         placeholder="e.g., Health, Sports, Education"
                         required
+                         disabled={!form.isEditingOpen || form.status === 'approved'}
                       />
                     </div>
                     <div>
@@ -894,6 +1209,7 @@ const CBYDP: React.FC = () => {
                         rows={3}
                         placeholder="Describe the agenda for this center"
                         required
+                         disabled={!form.isEditingOpen || form.status === 'approved'}
                       />
                     </div>
                   </div>
@@ -902,6 +1218,7 @@ const CBYDP: React.FC = () => {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <h4 className="font-medium text-gray-900">Projects</h4>
+                       {form.isEditingOpen && (
                       <button
                         type="button"
                         onClick={() => addProject(centerIdx)}
@@ -910,6 +1227,7 @@ const CBYDP: React.FC = () => {
                         <Plus className="h-4 w-4 mr-2" />
                         Add Project
                       </button>
+                       )}
                     </div>
 
                     <div className="overflow-x-auto">
@@ -937,6 +1255,7 @@ const CBYDP: React.FC = () => {
                                   value={project.concern}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'concern', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -945,6 +1264,7 @@ const CBYDP: React.FC = () => {
                                   value={project.objective}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'objective', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -953,6 +1273,7 @@ const CBYDP: React.FC = () => {
                                   value={project.indicator}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'indicator', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -961,6 +1282,7 @@ const CBYDP: React.FC = () => {
                                   value={project.target1}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target1', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -969,6 +1291,7 @@ const CBYDP: React.FC = () => {
                                   value={project.target2}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target2', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -977,6 +1300,7 @@ const CBYDP: React.FC = () => {
                                   value={project.target3}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target3', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -985,6 +1309,7 @@ const CBYDP: React.FC = () => {
                                   value={project.ppas}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'ppas', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -993,6 +1318,7 @@ const CBYDP: React.FC = () => {
                                   value={project.budget}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'budget', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
@@ -1001,10 +1327,11 @@ const CBYDP: React.FC = () => {
                                   value={project.responsible}
                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'responsible', e.target.value)}
                                   className="w-full border-none focus:ring-0 text-sm"
+                                   disabled={!form.isEditingOpen || form.status === 'approved'}
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
-                                {center.projects.length > 1 && (
+                                 {form.isEditingOpen && center.projects.length > 1 && (
                                   <button
                                     type="button"
                                     onClick={() => removeProject(centerIdx, projectIdx)}
@@ -1024,6 +1351,7 @@ const CBYDP: React.FC = () => {
               </div>
             ))}
 
+                         {form.isEditingOpen && (
             <button
               type="button"
               onClick={addCenter}
@@ -1032,6 +1360,75 @@ const CBYDP: React.FC = () => {
               <Plus className="h-4 w-4 mr-2" />
               Add Center of Participation
             </button>
+             )}
+          </div>
+                 </div>
+       )}
+
+       {/* KK Approval Modal */}
+       {showKKApprovalModal && (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+           <div className="bg-white rounded-lg p-6 w-full max-w-md">
+             <h3 className="text-lg font-semibold mb-4">Katipunan ng Kabataan Approval</h3>
+             <p className="text-gray-600 mb-4">
+               Please upload proof of Katipunan ng Kabataan approval for this CBYDP.
+             </p>
+             
+             <div className="mb-4">
+               <label className="block text-sm font-medium text-gray-700 mb-2">
+                 Upload Proof Image
+               </label>
+               <input
+                 type="file"
+                 accept="image/*"
+                 onChange={(e) => {
+                   const file = e.target.files?.[0];
+                   if (file) {
+                     const reader = new FileReader();
+                     reader.onload = (e) => {
+                       setKkProofImage(e.target?.result as string);
+                     };
+                     reader.readAsDataURL(file);
+                   }
+                 }}
+                 className="w-full border border-gray-300 rounded-md px-3 py-2"
+               />
+             </div>
+
+             {kkProofImage && (
+               <div className="mb-4">
+                 <img 
+                   src={kkProofImage} 
+                   alt="KK Proof" 
+                   className="w-full h-32 object-cover rounded border"
+                 />
+               </div>
+             )}
+
+             <div className="flex space-x-3">
+               <button
+                 onClick={() => {
+                   if (kkProofImage) {
+                     handleKKApproval(kkProofImage);
+                     setShowKKApprovalModal(false);
+                     setKkProofImage('');
+                   }
+                 }}
+                 disabled={!kkProofImage || saving}
+                 className="btn-primary flex-1"
+               >
+                 {saving ? 'Approving...' : 'Approve with KK'}
+               </button>
+               <button
+                 onClick={() => {
+                   setShowKKApprovalModal(false);
+                   setKkProofImage('');
+                 }}
+                 className="btn-secondary flex-1"
+               >
+                 Cancel
+               </button>
+             </div>
           </div>
         </div>
       )}

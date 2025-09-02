@@ -5,6 +5,7 @@ import {
   getDocs, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   setDoc, 
   query, 
   where, 
@@ -102,7 +103,7 @@ export const createCBYDP = async (cbydpData: any) => {
   try {
     const docRef = await addDoc(collection(db, 'cbydp'), {
       ...cbydpData,
-      createdBy: cbydpData.createdBy,
+      createdBy: cbydpData.lastEditedBy || cbydpData.initiatedBy || 'Unknown',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
@@ -144,6 +145,16 @@ export const updateCBYDP = async (cbydpId: string, cbydpData: any) => {
     return true;
   } catch (error) {
     console.error('Error updating CBYDP:', error);
+    throw error;
+  }
+};
+
+export const deleteCBYDP = async (cbydpId: string) => {
+  try {
+    await deleteDoc(doc(db, 'cbydp', cbydpId));
+    return true;
+  } catch (error) {
+    console.error('Error deleting CBYDP:', error);
     throw error;
   }
 };
