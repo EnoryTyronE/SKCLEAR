@@ -371,3 +371,149 @@ export const markNotFirstTimeLogin = async (uid: string) => {
   }
 };
 
+// ABYIP Management
+export const createABYIP = async (abyipData: any) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    // Check if ABYIP already exists for this year
+    const existingABYIP = await getABYIP(abyipData.year);
+    if (existingABYIP) {
+      throw new Error(`ABYIP for year ${abyipData.year} already exists`);
+    }
+
+    const docRef = await addDoc(collection(db, 'abyip'), {
+      ...abyipData,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating ABYIP:', error);
+    throw error;
+  }
+};
+
+export const getABYIP = async (year: string) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    console.log('Getting ABYIP for year:', year, 'user:', user.uid);
+
+    // First get all ABYIPs for the user, then filter by year in JavaScript
+    // This avoids the need for any indexes
+    const q = query(
+      collection(db, 'abyip'),
+      where('createdBy', '==', user.uid)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log('ABYIP query result:', querySnapshot.docs.length, 'documents found');
+    
+    // Filter by year in JavaScript
+    const abyipForYear = querySnapshot.docs.find(doc => {
+      const data = doc.data();
+      return data.year === year;
+    });
+    
+    if (abyipForYear) {
+      const data = { id: abyipForYear.id, ...abyipForYear.data() };
+      console.log('ABYIP data retrieved:', data);
+      return data;
+    }
+    console.log('No ABYIP found for year:', year);
+    return null;
+  } catch (error) {
+    console.error('Error getting ABYIP:', error);
+    throw error;
+  }
+};
+
+// Get all ABYIPs for a user (for debugging and management)
+export const getAllABYIPs = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    // Simplified query without orderBy to avoid index issues
+    const q = query(
+      collection(db, 'abyip'),
+      where('createdBy', '==', user.uid)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const abyips = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    // Sort by creation date in JavaScript instead
+    abyips.sort((a, b) => {
+      const dateA = (a as any).createdAt?.toDate?.() || new Date(0);
+      const dateB = (b as any).createdAt?.toDate?.() || new Date(0);
+      return dateB.getTime() - dateA.getTime(); // Descending order
+    });
+    
+    console.log('All ABYIPs for user:', abyips);
+    return abyips;
+  } catch (error) {
+    console.error('Error getting all ABYIPs:', error);
+    throw error;
+  }
+};
+
+export const updateABYIP = async (abyipId: string, abyipData: any) => {
+  try {
+    await updateDoc(doc(db, 'abyip', abyipId), {
+      ...abyipData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating ABYIP:', error);
+    throw error;
+  }
+};
+
+export const deleteABYIP = async (abyipId: string) => {
+  try {
+    await deleteDoc(doc(db, 'abyip', abyipId));
+    return true;
+  } catch (error) {
+    console.error('Error deleting ABYIP:', error);
+    throw error;
+  }
+};
+
+// Clear all ABYIP documents for the current user
+export const clearAllABYIPs = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    console.log('Clearing all ABYIPs for user:', user.uid);
+
+    // Get all ABYIPs for the current user
+    const q = query(
+      collection(db, 'abyip'),
+      where('createdBy', '==', user.uid)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log('Found', querySnapshot.docs.length, 'ABYIP documents to delete');
+    
+    // Delete each document
+    const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    console.log('Successfully deleted all ABYIP documents');
+    return true;
+  } catch (error) {
+    console.error('Error clearing all ABYIPs:', error);
+    throw error;
+  }
+};
+

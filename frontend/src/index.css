@@ -313,6 +313,31 @@ body {
     .print-content {
       display: block !important;
       visibility: visible !important;
+      position: relative !important;
+      z-index: 9999 !important;
+    }
+    
+    /* Ensure print content elements are visible */
+    .print-content * {
+      display: block !important;
+      visibility: visible !important;
+    }
+    
+    .print-content table,
+    .print-content tr,
+    .print-content td,
+    .print-content th {
+      display: table !important;
+      visibility: visible !important;
+    }
+    
+    .print-content tr {
+      display: table-row !important;
+    }
+    
+    .print-content td,
+    .print-content th {
+      display: table-cell !important;
     }
   }
 }

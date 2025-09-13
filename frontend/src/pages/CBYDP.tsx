@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP, uploadFile } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
 
 interface CBYDPRow {
   concern: string;
@@ -13,8 +13,22 @@ interface CBYDPRow {
   target2: string;
   target3: string;
   ppas: string;
-  budget: string;
+  programs: string[];
+  projects: string[];
+  actions: string[];
+  expenses: CBYDPExpense[];
   responsible: string;
+}
+
+interface PPARow {
+  program: string;
+  project: string;
+  action: string;
+}
+
+interface CBYDPExpense {
+  description: string;
+  cost: string;
 }
 
 interface CBYDCenter {
@@ -56,7 +70,10 @@ const defaultRow: CBYDPRow = {
   target2: '',
   target3: '',
   ppas: '',
-  budget: '',
+  programs: [''],
+  projects: [''],
+  actions: [''],
+  expenses: [{ description: '', cost: '' }],
   responsible: '',
 };
 
@@ -94,8 +111,32 @@ const CBYDP: React.FC = () => {
       
       if (existingCBYDP) {
         const { id, ...cbydpData } = existingCBYDP;
-        console.log('Setting CBYDP form data:', cbydpData);
-        setForm(cbydpData as CBYDPForm);
+        
+        // Migrate existing data to include new expenses structure
+        const migratedData = {
+          ...cbydpData,
+          centers: ((cbydpData as any).centers || []).map((center: any) => ({
+            ...center,
+            projects: (center.projects || []).map((project: any) => ({
+              ...project,
+              // Combine program, project, action into ppas field
+              ppas: project.ppas || `${project.program || ''} | ${project.project || ''} | ${project.action || ''}`.replace(/^\s*\|\s*|\s*\|\s*$/g, ''),
+                             // Create separate arrays for programs, projects, and actions
+               programs: project.programs || (project.ppas ? 
+                 project.ppas.split('|').map((part: string) => part.trim()).filter((part: string) => part) : 
+                 ['']
+               ),
+               projects: project.projects || [''],
+               actions: project.actions || [''],
+              expenses: project.expenses || [{ description: '', cost: '' }],
+              // Keep all fields for backward compatibility
+              budget: project.budget || ''
+            }))
+          }))
+        };
+        
+        console.log('Setting CBYDP form data:', migratedData);
+        setForm(migratedData as CBYDPForm);
         setExistingCBYDPId(id);
         setSaved(true);
       } else {
@@ -368,17 +409,519 @@ const CBYDP: React.FC = () => {
     }
   };
 
+  const addExpense = async (centerIdx: number, projectIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? { ...project, expenses: [...project.expenses, { description: '', cost: '' }] }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after adding expense:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const handleExpenseChange = async (centerIdx: number, projectIdx: number, expenseIdx: number, field: keyof CBYDPExpense, value: string) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      expenses: project.expenses.map((expense, k) =>
+                        k === expenseIdx ? { ...expense, [field]: value } : expense
+                      ),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists (with debouncing)
+    if (existingCBYDPId) {
+      // Clear any existing timeout
+      if ((window as any).expenseChangeTimeout) {
+        clearTimeout((window as any).expenseChangeTimeout);
+      }
+      
+      // Set a new timeout for auto-save
+              (window as any).expenseChangeTimeout = setTimeout(async () => {
+        try {
+          const cbydpData = {
+            ...updatedForm,
+            lastEditedBy: user?.name,
+            lastEditedAt: new Date(),
+            updatedAt: new Date()
+          };
+          await updateCBYDP(existingCBYDPId, cbydpData);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        } catch (error) {
+          console.error('Error auto-saving expense changes:', error);
+          setError('Failed to auto-save. Please click Save CBYDP manually.');
+        }
+      }, 2000); // Wait 2 seconds after user stops typing
+    }
+  };
+
+  
+
+  // Program functions
+  const addProgram = async (centerIdx: number, projectIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      programs: [...(project.programs || []), ''],
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after adding program:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const removeProgram = async (centerIdx: number, projectIdx: number, programIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      programs: (project.programs || []).filter((_, k) => k !== programIdx),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after removing program:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const handleProgramChange = async (centerIdx: number, projectIdx: number, programIdx: number, value: string) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      programs: (project.programs || []).map((program, k) =>
+                        k === programIdx ? value : program
+                      ),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists (with debouncing)
+    if (existingCBYDPId) {
+      // Clear any existing timeout
+      if ((window as any).programChangeTimeout) {
+        clearTimeout((window as any).programChangeTimeout);
+      }
+      
+      // Set a new timeout for auto-save
+      (window as any).programChangeTimeout = setTimeout(async () => {
+        try {
+          const cbydpData = {
+            ...updatedForm,
+            lastEditedBy: user?.name,
+            lastEditedAt: new Date(),
+            updatedAt: new Date()
+          };
+          await updateCBYDP(existingCBYDPId, cbydpData);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        } catch (error) {
+          console.error('Error auto-saving program changes:', error);
+          setError('Failed to auto-save. Please click Save CBYDP manually.');
+        }
+      }, 2000); // Wait 2 seconds after user stops typing
+    }
+  };
+
+  // Project functions
+  const addProjectItem = async (centerIdx: number, projectIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      projects: [...(project.projects || []), ''],
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after adding project item:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const removeProjectItem = async (centerIdx: number, projectIdx: number, projectItemIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      projects: (project.projects || []).filter((_, k) => k !== projectItemIdx),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after removing project item:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const handleProjectItemChange = async (centerIdx: number, projectIdx: number, projectItemIdx: number, value: string) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      projects: (project.projects || []).map((projectItem, k) =>
+                        k === projectItemIdx ? value : projectItem
+                      ),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists (with debouncing)
+    if (existingCBYDPId) {
+      // Clear any existing timeout
+      if ((window as any).projectItemChangeTimeout) {
+        clearTimeout((window as any).projectItemChangeTimeout);
+      }
+      
+      // Set a new timeout for auto-save
+      (window as any).projectItemChangeTimeout = setTimeout(async () => {
+        try {
+          const cbydpData = {
+            ...updatedForm,
+            lastEditedBy: user?.name,
+            lastEditedAt: new Date(),
+            updatedAt: new Date()
+          };
+          await updateCBYDP(existingCBYDPId, cbydpData);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        } catch (error) {
+          console.error('Error auto-saving project item changes:', error);
+          setError('Failed to auto-save. Please click Save CBYDP manually.');
+        }
+      }, 2000); // Wait 2 seconds after user stops typing
+    }
+  };
+
+  // Action functions
+  const addAction = async (centerIdx: number, projectIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      actions: [...(project.actions || []), ''],
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after adding action:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const removeAction = async (centerIdx: number, projectIdx: number, actionIdx: number) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      actions: (project.actions || []).filter((_, k) => k !== actionIdx),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists
+    if (existingCBYDPId) {
+      try {
+        const cbydpData = {
+          ...updatedForm,
+          lastEditedBy: user?.name,
+          lastEditedAt: new Date(),
+          updatedAt: new Date()
+        };
+        await updateCBYDP(existingCBYDPId, cbydpData);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (error) {
+        console.error('Error auto-saving after removing action:', error);
+        setError('Failed to auto-save. Please click Save CBYDP manually.');
+      }
+    }
+  };
+
+  const handleActionChange = async (centerIdx: number, projectIdx: number, actionIdx: number, value: string) => {
+    const updatedForm = {
+      ...form,
+      centers: form.centers.map((center, i) =>
+        i === centerIdx
+          ? {
+              ...center,
+              projects: center.projects.map((project, j) =>
+                j === projectIdx
+                  ? {
+                      ...project,
+                      actions: (project.actions || []).map((action, k) =>
+                        k === actionIdx ? value : action
+                      ),
+                    }
+                  : project
+              ),
+            }
+          : center
+      ),
+    };
+    setForm(updatedForm);
+    
+    // Auto-save if CBYDP already exists (with debouncing)
+    if (existingCBYDPId) {
+      // Clear any existing timeout
+      if ((window as any).actionChangeTimeout) {
+        clearTimeout((window as any).actionChangeTimeout);
+      }
+      
+      // Set a new timeout for auto-save
+      (window as any).actionChangeTimeout = setTimeout(async () => {
+        try {
+          const cbydpData = {
+            ...updatedForm,
+            lastEditedBy: user?.name,
+            lastEditedAt: new Date(),
+            updatedAt: new Date()
+          };
+          await updateCBYDP(existingCBYDPId, cbydpData);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        } catch (error) {
+          console.error('Error auto-saving action changes:', error);
+          setError('Failed to auto-save. Please click Save CBYDP manually.');
+        }
+      }, 2000); // Wait 2 seconds after user stops typing
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError('');
 
     try {
+      // Ensure all required fields are present
       const cbydpData = {
         ...form,
         lastEditedBy: user?.name,
         lastEditedAt: new Date(),
-        createdBy: user?.name, // Add createdBy field
-        updatedAt: new Date()
+        createdBy: user?.name,
+        updatedAt: new Date(),
+        // Ensure centers have the correct structure
+        centers: form.centers.map(center => ({
+          ...center,
+                                             projects: center.projects.map(project => ({
+               ...project,
+               ppas: project.ppas || '',
+               programs: project.programs || [''],
+               projects: project.projects || [''],
+               actions: project.actions || [''],
+               expenses: project.expenses || [{ description: '', cost: '' }],
+               concern: project.concern || '',
+               objective: project.objective || '',
+               indicator: project.indicator || '',
+               target1: project.target1 || '',
+               target2: project.target2 || '',
+               target3: project.target3 || '',
+               responsible: project.responsible || ''
+             }))
+        }))
       };
 
       console.log('Saving CBYDP data:', cbydpData);
@@ -399,7 +942,7 @@ const CBYDP: React.FC = () => {
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error('Error saving CBYDP:', error);
-      setError('Failed to save CBYDP. Please try again.');
+      setError(`Failed to save CBYDP: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -439,12 +982,26 @@ const CBYDP: React.FC = () => {
     <base href="${window.location.origin}/" />
     <title>${title}</title>
     ${styles}
-    <style>
-      @page { size: 13in 8.5in; margin: 8mm; }
-      html, body { background: white; }
-      .print-content { width: 13in !important; min-height: 8.5in !important; padding: 18px; }
-      table { page-break-inside: avoid; }
-    </style>
+                                       <style>
+         @page { 
+           size: 13in 8.5in; 
+           margin: 8mm;
+         }
+         html, body { background: white; }
+         .print-content { 
+           width: 13in !important; 
+           min-height: 8.5in !important; 
+           padding: 18px;
+         }
+         table { page-break-inside: auto; }
+         .page-content { page-break-inside: avoid; }
+         .table-section { page-break-inside: auto; }
+         tr { page-break-inside: auto; }
+         .prepared-by-section { 
+           page-break-inside: avoid; 
+           margin-top: 1.5rem;
+         }
+       </style>
   </head>
   <body>
     <div class="print-content">${printContents}</div>
@@ -484,6 +1041,232 @@ const CBYDP: React.FC = () => {
     }
 
     performPrint();
+  };
+
+  const exportToWord = () => {
+    const title = `CBYDP_${skProfile?.barangay || 'Document'}_${new Date().toISOString().split('T')[0]}`;
+    
+    // Generate Word document with inline styles - completely bypass CSS classes
+    const generateWordDocument = () => {
+      let content = '';
+      
+      form.centers.forEach((center, ci) => {
+        const totalRows = center.projects.length;
+        const rowsPerPage = 2;
+        const totalPages = Math.ceil(totalRows / rowsPerPage);
+        
+        Array.from({ length: totalPages }, (_, pageNum) => {
+          const startRow = pageNum * rowsPerPage;
+          const endRow = Math.min(startRow + rowsPerPage, totalRows);
+          const pageRows = center.projects.slice(startRow, endRow);
+          
+          content += `
+            <div style="page-break-after: always; width: 13in; min-height: 8.5in; padding: 18px; font-family: 'Times New Roman', serif; background: white;">
+              <!-- Header -->
+              <div style="position: relative; margin-bottom: 12px;">
+                <div style="position: absolute; top: 0; right: 0;">
+                  <div style="font-size: 9pt; font-weight: 600; border: 1px solid #000; padding: 4px 8px;">Annex "A"</div>
+                </div>
+                
+                ${form.showLogoInPrint && skProfile?.logo ? `
+                  <div style="width: 100%; text-align: center; margin-bottom: 8px;">
+                    <img src="${skProfile.logo}" alt="Barangay Logo" style="width: 0.9in; height: 0.9in; object-fit: cover;" />
+                  </div>
+                ` : ''}
+                
+                <div style="text-align: center; line-height: 1.2; margin-bottom: 8px;">
+                  <div style="font-size: 16pt; font-weight: bold; margin-bottom: 4px;">
+                    <span>Barangay </span>
+                    <span style="border-bottom: 1px solid #000; display: inline-block; min-width: 2.8in;">${skProfile?.barangay || '\u00A0'}</span>
+                  </div>
+                  <div style="font-size: 16pt; font-weight: bold;">Sangguniang Kabataan</div>
+                </div>
+                
+                <div style="text-align: center; margin-bottom: 8px;">
+                  <div style="font-size: 10pt; font-weight: 600;">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP)</div>
+                </div>
+                
+                <div style="font-size: 9pt; margin-bottom: 4px;">
+                  <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                    <span style="margin-right: 8px;">Region:</span>
+                    <span style="border-bottom: 1px solid #000; display: inline-block; width: 1.6in;">${skProfile?.region || '\u00A0'}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center;">
+                      <span style="margin-right: 8px;">Province:</span>
+                      <span style="border-bottom: 1px solid #000; display: inline-block; width: 1.9in;">${skProfile?.province || '\u00A0'}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; margin-left: 0.5in;">
+                      <span style="margin-right: 8px;">City/Municipality:</span>
+                      <span style="border-bottom: 1px solid #000; display: inline-block; width: 2.2in;">${skProfile?.city || '\u00A0'}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div style="text-align: center; font-size: 9pt; margin: 8px 0;">
+                  <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
+                  <span style="border-bottom: 1px solid #000; display: inline-block; width: 0.6in; margin: 0 4px;">${skProfile?.skTermStart || '\u00A0'}</span>
+                  <span>-</span>
+                  <span style="border-bottom: 1px solid #000; display: inline-block; width: 0.6in; margin-left: 4px;">${skProfile?.skTermEnd || '\u00A0'}</span>
+                </div>
+              </div>
+              
+              <!-- Center of Participation -->
+              <div style="margin-bottom: 12px;">
+                <div style="font-size: 9pt; margin-bottom: 4px;">
+                  <span style="font-weight: 600;">CENTER OF PARTICIPATION:</span>
+                  <span style="border-bottom: 1px solid #000; display: inline-block; width: 3.0in; margin-left: 4px;">${center.name || '\u00A0'}</span>
+                </div>
+                <div style="font-size: 9pt; margin-bottom: 8px;">
+                  <div style="margin-bottom: 4px;">Agenda Statement:</div>
+                  <div style="border-bottom: 1px solid #000; min-height: 0.25in;">${center.agenda || '\u00A0'}</div>
+                </div>
+              </div>
+              
+              ${totalPages > 1 ? `
+                <div style="font-size: 9pt; text-align: right; margin: 8px 0;">
+                  Page ${pageNum + 1} of ${totalPages}
+                </div>
+              ` : ''}
+              
+              <!-- Table -->
+              <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #000;">
+                <thead>
+                  <tr>
+                    <th style="width: 1.2in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Youth Development Concern</th>
+                    <th style="width: 1.4in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Objective</th>
+                    <th style="width: 1.3in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Performance Indicator</th>
+                    <th style="width: 0.9in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Target</th>
+                    <th style="width: 0.9in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Target</th>
+                    <th style="width: 0.9in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Target</th>
+                    <th style="width: 3.0in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">PPAs</th>
+                    <th style="width: 1.2in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Expenses</th>
+                    <th style="width: 1.1in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Person Responsible</th>
+                  </tr>
+                  <tr>
+                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
+                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
+                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
+                    <th style="border: 1px solid #000; padding: 4px; text-align: center; font-size: 9pt;">[Year 1]</th>
+                    <th style="border: 1px solid #000; padding: 4px; text-align: center; font-size: 9pt;">[Year 2]</th>
+                    <th style="border: 1px solid #000; padding: 4px; text-align: center; font-size: 9pt;">[Year 3]</th>
+                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
+                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
+                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${pageRows.map((project, pi) => `
+                    <tr>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.concern}</td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.objective}</td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.indicator}</td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.target1}</td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.target2}</td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.target3}</td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">
+                        <div>
+                          ${(project.programs || []).filter(p => p.trim()).length > 0 ? `
+                            <div style="border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">
+                              <div><span style="font-weight: 600;">Programs:</span></div>
+                              <ul style="list-style-type: disc; list-style-position: inside; margin-left: 8px; margin-top: 4px;">
+                                ${(project.programs || []).filter(p => p.trim()).map(program => `<li style="font-size: 9pt;">${program}</li>`).join('')}
+                              </ul>
+                            </div>
+                          ` : ''}
+                          ${(project.projects || []).filter(p => p.trim()).length > 0 ? `
+                            <div style="border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">
+                              <div><span style="font-weight: 600;">Projects:</span></div>
+                              <ul style="list-style-type: disc; list-style-position: inside; margin-left: 8px; margin-top: 4px;">
+                                ${(project.projects || []).filter(p => p.trim()).map(projectItem => `<li style="font-size: 9pt;">${projectItem}</li>`).join('')}
+                              </ul>
+                            </div>
+                          ` : ''}
+                          ${(project.actions || []).filter(p => p.trim()).length > 0 ? `
+                            <div style="border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">
+                              <div><span style="font-weight: 600;">Actions:</span></div>
+                              <ul style="list-style-type: disc; list-style-position: inside; margin-left: 8px; margin-top: 4px;">
+                                ${(project.actions || []).filter(p => p.trim()).map(action => `<li style="font-size: 9pt;">${action}</li>`).join('')}
+                              </ul>
+                            </div>
+                          ` : ''}
+                          ${(project.programs || []).filter(p => p.trim()).length === 0 &&
+                            (project.projects || []).filter(p => p.trim()).length === 0 &&
+                            (project.actions || []).filter(p => p.trim()).length === 0 ? '\u00A0' : ''}
+                        </div>
+                      </td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">
+                        ${(project.expenses || []).map(expense => `
+                          <div style="font-size: 9pt;">${expense.description}: ₱${expense.cost}</div>
+                        `).join('')}
+                      </td>
+                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.responsible}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              
+              <!-- Prepared by -->
+              <div style="margin-top: 12px; page-break-inside: avoid;">
+                <div style="text-align: center; font-size: 9pt; font-weight: 600; margin-bottom: 8px;">Prepared by:</div>
+                <div style="display: flex; justify-content: space-around; text-align: center;">
+                  <div style="width: 3in;">
+                    <div style="border-bottom: 1px solid #000; height: 0.25in;">
+                      <div style="font-size: 9pt;">${form.skMembers.find(m => m.position === 'SK Secretary')?.name || ''}</div>
+                    </div>
+                    <div style="font-size: 9pt; margin-top: 4px;">SK Secretary</div>
+                  </div>
+                  <div style="width: 3in;">
+                    <div style="border-bottom: 1px solid #000; height: 0.25in;">
+                      <div style="font-size: 9pt;">${form.skMembers.find(m => m.position === 'SK Chairperson')?.name || ''}</div>
+                    </div>
+                    <div style="font-size: 9pt; margin-top: 4px;">SK Chairperson</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+      });
+      
+      return content;
+    };
+    
+    const wordContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${title}</title>
+        <style>
+          @page { 
+            size: 13in 8.5in landscape; 
+            margin: 8mm;
+          }
+          body { 
+            font-family: 'Times New Roman', serif; 
+            font-size: 12pt; 
+            margin: 0; 
+            padding: 0;
+            background: white;
+          }
+        </style>
+      </head>
+      <body>
+        ${generateWordDocument()}
+      </body>
+      </html>
+    `;
+    
+    // Create blob and download
+    const blob = new Blob([wordContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleRefresh = async () => {
@@ -973,157 +1756,245 @@ const CBYDP: React.FC = () => {
         <div className="space-y-6">
           {/* Print Preview */}
           <div className="bg-white border rounded-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Print Preview</h3>
-              <button
-                onClick={handlePrint}
-                className="btn-primary flex items-center"
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </button>
-            </div>
-                                                   <div ref={printRef} className="print-content bg-white p-8" style={{ width: '13in', minHeight: '8.5in' }}>
-              {/* Multipage print: one page per center */}
-              {form.centers.map((center, ci) => (
-                <div key={ci} style={{ pageBreakAfter: 'always' }}>
-                  {/* Header */}
-                  <div className="mb-6" style={{ position: 'relative' }}>
-                    <div style={{ position: 'absolute', top: 0, right: 0 }}>
-                      <div className="text-xs font-semibold border border-gray-700 px-2 py-1">Annex "A"</div>
-                    </div>
-
-                    {/* Barangay Logo */}
-                    {form.showLogoInPrint && skProfile?.logo && (
-                      <div className="w-full flex justify-center mb-2">
-                        <img src={skProfile.logo} alt="Barangay Logo" style={{ width: '0.9in', height: '0.9in', objectFit: 'cover' }} />
-                      </div>
-                    )}
-
-                    {/* Barangay + SK */}
-                    <div className="text-center leading-tight mb-2">
-                      <div className="text-sm font-semibold">
-                        Barangay
-                        <span style={{ display: 'inline-block', minWidth: '2.8in', borderBottom: '1px solid #000', marginLeft: '6px' }}>
-                          {skProfile?.barangay || '\u00A0'}
-                        </span>
-                      </div>
-                      <div className="text-sm font-semibold">Sangguniang Kabataan</div>
-                    </div>
-
-                    {/* Title */}
-                    <div className="text-center mb-2">
-                      <div className="text-sm font-semibold">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP)</div>
-                    </div>
-
-                    {/* Region / Province / City */}
-                    <div className="text-xs mb-1" style={{ width: '100%' }}>
-                      <div className="flex items-center mb-1">
-                        <span className="mr-2">Region:</span>
-                        <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <span className="mr-2">Province:</span>
-                          <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
+                         <div className="flex justify-between items-center mb-4">
+               <h3 className="text-lg font-semibold">Print Preview</h3>
+               <div className="flex space-x-3">
+                 <button
+                   onClick={handlePrint}
+                   className="btn-primary flex items-center"
+                 >
+                   <Printer className="h-4 w-4 mr-2" />
+                   Print
+                 </button>
+                 <button
+                   onClick={exportToWord}
+                   className="btn-secondary flex items-center"
+                 >
+                   <Download className="h-4 w-4 mr-2" />
+                   Export to Word
+                 </button>
+               </div>
+             </div>
+                                                                                                       <div ref={printRef} className="print-content bg-white p-8" style={{ width: '13in', minHeight: '8.5in' }}>
+                                                      
+                                                           {/* New Multipage print structure */}
+                                                                   {form.centers.map((center, ci) => {
+                   // Calculate how many rows can fit per page (approximately 2 rows per page to ensure "Prepared by" fits and is permanent)
+                   const rowsPerPage = 2;
+                   const totalRows = center.projects.length;
+                   const totalPages = Math.ceil(totalRows / rowsPerPage);
+                   
+                   return Array.from({ length: totalPages }, (_, pageNum) => {
+                     const startRow = pageNum * rowsPerPage;
+                     const endRow = Math.min(startRow + rowsPerPage, totalRows);
+                     const pageRows = center.projects.slice(startRow, endRow);
+                    
+                    return (
+                      <div key={`${ci}-${pageNum}`} style={{ pageBreakAfter: 'always' }}>
+                        {/* Header - repeated on every page */}
+                        <div className="mb-3" style={{ position: 'relative' }}>
+                          <div style={{ position: 'absolute', top: 0, right: 0 }}>
+                            <div className="text-xs font-semibold border border-gray-700 px-2 py-1">Annex "A"</div>
+                          </div>
+ 
+                          {/* Barangay Logo */}
+                          {form.showLogoInPrint && skProfile?.logo && (
+                            <div className="w-full flex justify-center mb-2">
+                              <img src={skProfile.logo} alt="Barangay Logo" style={{ width: '0.9in', height: '0.9in', objectFit: 'cover' }} />
+                            </div>
+                          )}
+ 
+                          {/* Barangay + SK */}
+                          <div className="text-center leading-tight mb-2">
+                            <div className="text-base font-bold mb-1">
+                              <span style={{ fontSize: '16pt', fontWeight: 'bold' }}>Barangay </span>
+                              <span style={{ fontSize: '16pt', fontWeight: 'bold' }}>
+                                {skProfile?.barangay || '\u00A0'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '16pt', fontWeight: 'bold' }}>Sangguniang Kabataan</div>
+                          </div>
+ 
+                          {/* Title */}
+                          <div className="text-center mb-2">
+                            <div className="text-sm font-semibold">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP)</div>
+                          </div>
+ 
+                          {/* Region / Province / City */}
+                          <div className="text-xs mb-1" style={{ width: '100%' }}>
+                            <div className="flex items-center mb-1">
+                              <span className="mr-2">Region:</span>
+                              <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <span className="mr-2">Province:</span>
+                                <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
+                              </div>
+                              <div className="flex items-center" style={{ marginLeft: '0.5in' }}>
+                                <span className="mr-2">City/Municipality:</span>
+                                <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
+                              </div>
+                            </div>
+                          </div>
+ 
+                          {/* CBYDP CY ______ - ______ */}
+                          <div className="text-center text-xs my-2">
+                            <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
+                            <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
+                              {skProfile?.skTermStart || '\u00A0'}
+                            </span>
+                            <span>-</span>
+                            <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', marginLeft: '0.1in' }}>
+                              {skProfile?.skTermEnd || '\u00A0'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center" style={{ marginLeft: '0.5in' }}>
-                          <span className="mr-2">City/Municipality:</span>
-                          <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
+ 
+                        {/* Center of Participation and Agenda - show on every page for clarity */}
+                        <div className="mb-3">
+                          {/* Center of Participation line */}
+                          <div className="text-xs mb-1">
+                            <span className="font-semibold">CENTER OF PARTICIPATION:</span>
+                            <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '3.0in', marginLeft: '0.1in' }}>
+                              {center.name || '\u00A0'}
+                            </span>
+                          </div>
+ 
+                          {/* Agenda Statement */}
+                          <div className="text-xs mb-2">
+                            <div className="mb-1">Agenda Statement:</div>
+                            <div style={{ borderBottom: '1px solid #000', minHeight: '0.25in' }}>
+                              {center.agenda || '\u00A0'}
+                            </div>
+                          </div>
+                        </div>
+                         
+                        {/* Page indicator for multi-page centers */}
+                        {totalPages > 1 && (
+                          <div className="text-xs text-right mt-2 mb-2">
+                            Page {pageNum + 1} of {totalPages}
+                          </div>
+                        )}
+ 
+                        {/* Table with proper page break handling - allow rows to break but keep "Prepared by" together */}
+                        <div>
+                          <table className="w-full border border-gray-700" style={{ borderCollapse: 'collapse', fontSize: '9pt' }}>
+                           <thead>
+                             <tr>
+                               <th style={{ width: '1.2in' }} className="border border-gray-700 p-1 text-left">Youth Development Concern</th>
+                               <th style={{ width: '1.4in' }} className="border border-gray-700 p-1 text-left">Objective</th>
+                               <th style={{ width: '1.3in' }} className="border border-gray-700 p-1 text-left">Performance Indicator</th>
+                               <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
+                               <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
+                               <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
+                               <th style={{ width: '3.0in' }} className="border border-gray-700 p-1 text-left">PPAs</th>
+                               <th style={{ width: '1.2in' }} className="border border-gray-700 p-1 text-left">Expenses</th>
+                               <th style={{ width: '1.1in' }} className="border border-gray-700 p-1 text-left">Person Responsible</th>
+                             </tr>
+                             <tr>
+                               <th className="border border-gray-700 p-1"></th>
+                               <th className="border border-gray-700 p-1"></th>
+                               <th className="border border-gray-700 p-1"></th>
+                               <th className="border border-gray-700 p-1 text-center">[Year 1]</th>
+                               <th className="border border-gray-700 p-1 text-center">[Year 2]</th>
+                               <th className="border border-gray-700 p-1 text-center">[Year 3]</th>
+                               <th className="border border-gray-700 p-1"></th>
+                               <th className="border border-gray-700 p-1"></th>
+                               <th className="border border-gray-700 p-1"></th>
+                             </tr>
+                           </thead>
+                           <tbody>
+                             {pageRows.map((project, pi) => (
+                               <tr key={`${ci}-${pageNum}-${pi}`}>
+                                 <td className="border border-gray-700 p-1 align-top">{project.concern}</td>
+                                 <td className="border border-gray-700 p-1 align-top">{project.objective}</td>
+                                 <td className="border border-gray-700 p-1 align-top">{project.indicator}</td>
+                                 <td className="border border-gray-700 p-1 align-top">{project.target1}</td>
+                                 <td className="border border-gray-700 p-1 align-top">{project.target2}</td>
+                                 <td className="border border-gray-700 p-1 align-top">{project.target3}</td>
+                                                                  <td className="border border-gray-700 p-1 align-top">
+                                    <div className="text-xs space-y-1">
+                                                                              {/* Programs */}
+                                       {(project.programs || []).filter(p => p.trim()).length > 0 && (
+                                         <div className="border-b border-gray-300 pb-1">
+                                           <div><span className="font-medium">Programs:</span></div>
+                                           <ul className="list-disc list-inside ml-2 mt-1">
+                                             {(project.programs || []).filter(p => p.trim()).map((program, idx) => (
+                                               <li key={`prog-${idx}`} className="text-xs">{program}</li>
+                                             ))}
+                                           </ul>
+                                         </div>
+                                       )}
+                                      
+                                                                              {/* Projects */}
+                                       {(project.projects || []).filter(p => p.trim()).length > 0 && (
+                                         <div className="border-b border-gray-300 pb-1">
+                                           <div><span className="font-medium">Projects:</span></div>
+                                           <ul className="list-disc list-inside ml-2 mt-1">
+                                             {(project.projects || []).filter(p => p.trim()).map((projectItem, idx) => (
+                                               <li key={`proj-${idx}`} className="text-xs">{projectItem}</li>
+                                             ))}
+                                           </ul>
+                                         </div>
+                                       )}
+                                      
+                                                                              {/* Actions */}
+                                       {(project.actions || []).filter(p => p.trim()).length > 0 && (
+                                         <div className="border-b border-gray-300 pb-1">
+                                           <div><span className="font-medium">Actions:</span></div>
+                                           <ul className="list-disc list-inside ml-2 mt-1">
+                                             {(project.actions || []).filter(p => p.trim()).map((action, idx) => (
+                                               <li key={`act-${idx}`} className="text-xs">{action}</li>
+                                             ))}
+                                           </ul>
+                                         </div>
+                                       )}
+                                      
+                                      {/* Show empty state if no PPA items */}
+                                      {(project.programs || []).filter(p => p.trim()).length === 0 &&
+                                       (project.projects || []).filter(p => p.trim()).length === 0 &&
+                                       (project.actions || []).filter(p => p.trim()).length === 0 && (
+                                        '\u00A0'
+                                      )}
+                                    </div>
+                                  </td>
+                                 <td className="border border-gray-700 p-1 align-top">
+                                   {(project.expenses || []).map((expense, idx) => (
+                                     <div key={idx} className="text-xs">
+                                       {expense.description}: ₱{expense.cost}
+                                     </div>
+                                   ))}
+                                 </td>
+                                 <td className="border border-gray-700 p-1 align-top">{project.responsible}</td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>
+ 
+                        {/* "Prepared by" section that appears on every page */}
+                        <div className="mt-3 prepared-by-section" style={{ pageBreakInside: 'avoid' }}>
+                          <div className="text-center text-xs font-semibold mb-2">Prepared by:</div>
+                          <div className="flex justify-around text-center">
+                            <div style={{ width: '3in' }}>
+                              <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                                <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Secretary')?.name || ''}</div>
+                              </div>
+                              <div className="text-xs mt-1">SK Secretary</div>
+                            </div>
+                            <div style={{ width: '3in' }}>
+                              <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
+                                <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Chairperson')?.name || ''}</div>
+                              </div>
+                              <div className="text-xs mt-1">SK Chairperson</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-
-                    {/* CBYDP CY ______ - ______ */}
-                    <div className="text-center text-xs my-2">
-                      <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
-                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
-                        {skProfile?.skTermStart || '\u00A0'}
-                      </span>
-                      <span>-</span>
-                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', marginLeft: '0.1in' }}>
-                        {skProfile?.skTermEnd || '\u00A0'}
-                      </span>
-                    </div>
-
-                    {/* Center of Participation line */}
-                    <div className="text-xs mb-1">
-                      <span className="font-semibold">CENTER OF PARTICIPATION:</span>
-                      <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '3.0in', marginLeft: '0.1in' }}>
-                        {center.name || '\u00A0'}
-                      </span>
-                    </div>
-
-                    {/* Agenda Statement rule */}
-                    <div className="text-xs mb-2">
-                      <div className="mb-1">Agenda Statement:</div>
-                      <div style={{ borderTop: '1px solid #000', width: '100%' }} />
-                    </div>
-                  </div>
-
-                  {/* Center's Projects table */}
-                  <table className="w-full border border-gray-700" style={{ borderCollapse: 'collapse', fontSize: '9pt' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: '1.2in' }} className="border border-gray-700 p-1 text-left">Youth Development Concern</th>
-                        <th style={{ width: '1.4in' }} className="border border-gray-700 p-1 text-left">Objective</th>
-                        <th style={{ width: '1.3in' }} className="border border-gray-700 p-1 text-left">Performance Indicator</th>
-                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
-                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
-                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Target</th>
-                        <th style={{ width: '1.2in' }} className="border border-gray-700 p-1 text-left">PPAs</th>
-                        <th style={{ width: '0.9in' }} className="border border-gray-700 p-1 text-left">Budget</th>
-                        <th style={{ width: '1.1in' }} className="border border-gray-700 p-1 text-left">Person Responsible</th>
-                      </tr>
-                      <tr>
-                        <th className="border border-gray-700 p-1"></th>
-                        <th className="border border-gray-700 p-1"></th>
-                        <th className="border border-gray-700 p-1"></th>
-                        <th className="border border-gray-700 p-1 text-center">[Year 1]</th>
-                        <th className="border border-gray-700 p-1 text-center">[Year 2]</th>
-                        <th className="border border-gray-700 p-1 text-center">[Year 3]</th>
-                        <th className="border border-gray-700 p-1"></th>
-                        <th className="border border-gray-700 p-1"></th>
-                        <th className="border border-gray-700 p-1"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {center.projects.map((project, pi) => (
-                        <tr key={`${ci}-${pi}`}>
-                          <td className="border border-gray-700 p-1 align-top">{project.concern}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.objective}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.indicator}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.target1}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.target2}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.target3}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.ppas}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.budget}</td>
-                          <td className="border border-gray-700 p-1 align-top">{project.responsible}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Prepared by (shown on every page, secretary & chair only) */}
-                  <div className="mt-6">
-                    <div className="text-center text-xs font-semibold mb-2">Prepared by:</div>
-                    <div className="flex justify-around text-center">
-                      <div style={{ width: '3in' }}>
-                        <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
-                          <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Secretary')?.name || ''}</div>
-                        </div>
-                        <div className="text-xs mt-1">SK Secretary</div>
-                      </div>
-                      <div style={{ width: '3in' }}>
-                        <div style={{ borderBottom: '1px solid #000', height: '0.25in' }}>
-                          <div className="text-xs">{form.skMembers.find(m => m.position === 'SK Chairperson')?.name || ''}</div>
-                        </div>
-                        <div className="text-xs mt-1">SK Chairperson</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                    );
+                  });
+                }).flat()}
 
               {/* Always-last page: Header + Prepared by + Members + SK Federation */}
               <div style={{ pageBreakBefore: 'always' }}>
@@ -1142,13 +2013,13 @@ const CBYDP: React.FC = () => {
 
                   {/* Barangay + SK */}
                   <div className="text-center leading-tight mb-2">
-                    <div className="text-sm font-semibold">
-                      Barangay
-                      <span style={{ display: 'inline-block', minWidth: '2.8in', borderBottom: '1px solid #000', marginLeft: '6px' }}>
+                    <div className="text-base font-bold mb-1">
+                      <span style={{ fontSize: '16pt', fontWeight: 'bold' }}>Barangay </span>
+                      <span style={{ fontSize: '16pt', fontWeight: 'bold' }}>
                         {skProfile?.barangay || '\u00A0'}
                       </span>
                     </div>
-                    <div className="text-sm font-semibold">Sangguniang Kabataan</div>
+                    <div style={{ fontSize: '16pt', fontWeight: 'bold' }}>Sangguniang Kabataan</div>
                   </div>
 
                   {/* Title */}
@@ -1174,17 +2045,17 @@ const CBYDP: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* CBYDP CY ______ - ______ */}
-                  <div className="text-center text-xs my-2">
-                    <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
-                    <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
-                      {skProfile?.skTermStart || '\u00A0'}
-                    </span>
-                    <span>-</span>
-                    <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', marginLeft: '0.1in' }}>
-                      {skProfile?.skTermEnd || '\u00A0'}
-                    </span>
-                  </div>
+                                     {/* CBYDP CY ______ - ______ */}
+                   <div className="text-center text-xs my-2">
+                     <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
+                     <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
+                       {skProfile?.skTermStart || '\u00A0'}
+                     </span>
+                     <span>-</span>
+                     <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', marginLeft: '0.1in' }}>
+                       {skProfile?.skTermEnd || '\u00A0'}
+                     </span>
+                   </div>
                 </div>
 
                 {/* Prepared by (final signatures page) */}
@@ -1340,120 +2211,252 @@ const CBYDP: React.FC = () => {
                        )}
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse border border-gray-300">
-                        <thead>
-                          <tr className="bg-gray-50">
-                            <th className="border border-gray-300 p-2 text-left text-sm">Concern</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Objective</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Indicator</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Target 1</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Target 2</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Target 3</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">PPAs</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Budget</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Responsible</th>
-                            <th className="border border-gray-300 p-2 text-left text-sm">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {center.projects.map((project, projectIdx) => (
-                            <tr key={projectIdx}>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.concern}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'concern', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.objective}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'objective', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.indicator}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'indicator', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.target1}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target1', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.target2}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target2', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.target3}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target3', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.ppas}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'ppas', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.budget}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'budget', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={project.responsible}
-                                  onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'responsible', e.target.value)}
-                                  className="w-full border-none focus:ring-0 text-sm"
-                                   disabled={!form.isEditingOpen || form.status === 'approved'}
-                                />
-                              </td>
-                              <td className="border border-gray-300 p-2">
-                                 {form.isEditingOpen && center.projects.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => removeProject(centerIdx, projectIdx)}
-                                    className="text-danger-600 hover:text-danger-700"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </td>
+                                         <div className="overflow-x-auto">
+                       <table className="w-full border-collapse border border-gray-300" style={{ minWidth: '1400px' }}>
+                                                  <thead>
+                            <tr className="bg-gray-50">
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '150px' }}>Concern</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '150px' }}>Objective</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '150px' }}>Indicator</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '100px' }}>Target 1</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '100px' }}>Target 2</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '100px' }}>Target 3</th>
+                                                            <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '300px' }}>PPAs</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '200px' }}>Expenses</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '120px' }}>Responsible</th>
+                              <th className="border border-gray-300 p-2 text-left text-sm" style={{ minWidth: '80px' }}>Action</th>
                             </tr>
-                          ))}
-                        </tbody>
+                          </thead>
+                         <tbody>
+                           {center.projects.map((project, projectIdx) => (
+                             <tr key={projectIdx}>
+                                                               <td className="border border-gray-300 p-2">
+                                  <textarea
+                                    value={project.concern}
+                                    onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'concern', e.target.value)}
+                                    className="w-full border-none focus:ring-0 text-sm resize-none"
+                                    rows={3}
+                                    style={{ minHeight: '60px' }}
+                                    placeholder="Enter concern details..."
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                  />
+                                </td>
+                                                               <td className="border border-gray-300 p-2">
+                                  <textarea
+                                    value={project.objective}
+                                    onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'objective', e.target.value)}
+                                    className="w-full border-none focus:ring-0 text-sm resize-none"
+                                    rows={3}
+                                    style={{ minHeight: '60px' }}
+                                    placeholder="Enter objective details..."
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                  />
+                                </td>
+                                <td className="border border-gray-300 p-2">
+                                  <textarea
+                                    value={project.indicator}
+                                    onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'indicator', e.target.value)}
+                                    className="w-full border-none focus:ring-0 text-sm resize-none"
+                                    rows={3}
+                                    style={{ minHeight: '60px' }}
+                                    placeholder="Enter indicator details..."
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                  />
+                                </td>
+                               <td className="border border-gray-300 p-2">
+                                 <input
+                                   type="text"
+                                   value={project.target1}
+                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target1', e.target.value)}
+                                   className="w-full border-none focus:ring-0 text-sm"
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                 />
+                               </td>
+                               <td className="border border-gray-300 p-2">
+                                 <input
+                                   type="text"
+                                   value={project.target2}
+                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target2', e.target.value)}
+                                   className="w-full border-none focus:ring-0 text-sm"
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                 />
+                               </td>
+                               <td className="border border-gray-300 p-2">
+                                 <input
+                                   type="text"
+                                   value={project.target3}
+                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'target3', e.target.value)}
+                                   className="w-full border-none focus:ring-0 text-sm"
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                 />
+                               </td>
+                                                                                               <td className="border border-gray-300 p-2">
+                                   <div className="space-y-2">
+                                     {/* Programs */}
+                                     <div className="space-y-2">
+                                       <div className="text-xs font-medium text-gray-600">Programs:</div>
+                                       {(project.programs || []).map((program, programIdx) => (
+                                         <div key={programIdx} className="flex items-center space-x-2">
+                                           <input
+                                             type="text"
+                                             value={program}
+                                             onChange={(e) => handleProgramChange(centerIdx, projectIdx, programIdx, e.target.value)}
+                                             className="flex-1 border-none focus:ring-0 text-sm p-1 bg-gray-50 rounded"
+                                             placeholder="Enter Program..."
+                                             disabled={!form.isEditingOpen || form.status === 'approved'}
+                                           />
+                                           {form.isEditingOpen && (
+                                             <button
+                                               type="button"
+                                               onClick={() => removeProgram(centerIdx, projectIdx, programIdx)}
+                                               className="text-xs text-red-600 hover:text-red-700"
+                                             >
+                                               <Trash2 className="h-3 w-3" />
+                                             </button>
+                                           )}
+                                         </div>
+                                       ))}
+                                       {form.isEditingOpen && (
+                                         <button
+                                           type="button"
+                                           onClick={() => addProgram(centerIdx, projectIdx)}
+                                           className="text-xs text-blue-600 hover:text-blue-700 mt-1"
+                                         >
+                                           + Add Program
+                                         </button>
+                                       )}
+                                     </div>
+
+                                     {/* Projects */}
+                                     <div className="space-y-2">
+                                       <div className="text-xs font-medium text-gray-600">Projects:</div>
+                                       {(project.projects || []).map((projectItem, projectItemIdx) => (
+                                         <div key={projectItemIdx} className="flex items-center space-x-2">
+                                           <input
+                                             type="text"
+                                             value={projectItem}
+                                             onChange={(e) => handleProjectItemChange(centerIdx, projectIdx, projectItemIdx, e.target.value)}
+                                             className="flex-1 border-none focus:ring-0 text-sm p-1 bg-gray-50 rounded"
+                                             placeholder="Enter Project..."
+                                             disabled={!form.isEditingOpen || form.status === 'approved'}
+                                           />
+                                           {form.isEditingOpen && (
+                                             <button
+                                               type="button"
+                                               onClick={() => removeProjectItem(centerIdx, projectIdx, projectItemIdx)}
+                                               className="text-xs text-red-600 hover:text-red-700"
+                                             >
+                                               <Trash2 className="h-3 w-3" />
+                                             </button>
+                                           )}
+                                         </div>
+                                       ))}
+                                       {form.isEditingOpen && (
+                                         <button
+                                           type="button"
+                                           onClick={() => addProjectItem(centerIdx, projectIdx)}
+                                           className="text-xs text-blue-600 hover:text-blue-700 mt-1"
+                                         >
+                                           + Add Project
+                                         </button>
+                                       )}
+                                     </div>
+
+                                     {/* Actions */}
+                                     <div className="space-y-2">
+                                       <div className="text-xs font-medium text-gray-600">Actions:</div>
+                                       {(project.actions || []).map((action, actionIdx) => (
+                                         <div key={actionIdx} className="flex items-center space-x-2">
+                                           <input
+                                             type="text"
+                                             value={action}
+                                             onChange={(e) => handleActionChange(centerIdx, projectIdx, actionIdx, e.target.value)}
+                                             className="flex-1 border-none focus:ring-0 text-sm p-1 bg-gray-50 rounded"
+                                             placeholder="Enter Action..."
+                                             disabled={!form.isEditingOpen || form.status === 'approved'}
+                                           />
+                                           {form.isEditingOpen && (
+                                             <button
+                                               type="button"
+                                               onClick={() => removeAction(centerIdx, projectIdx, actionIdx)}
+                                               className="text-xs text-red-600 hover:text-red-700"
+                                             >
+                                               <Trash2 className="h-3 w-3" />
+                                             </button>
+                                           )}
+                                         </div>
+                                       ))}
+                                       {form.isEditingOpen && (
+                                         <button
+                                           type="button"
+                                           onClick={() => addAction(centerIdx, projectIdx)}
+                                           className="text-xs text-blue-600 hover:text-blue-700 mt-1"
+                                         >
+                                           + Add Action
+                                         </button>
+                                       )}
+                                     </div>
+
+                                   </div>
+                                 </td>
+                                                                                                                               <td className="border border-gray-300 p-2">
+                                   <div className="space-y-2">
+                                     {(project.expenses || []).map((expense, expenseIdx) => (
+                                       <div key={expenseIdx} className="space-y-1">
+                                         <input
+                                           type="text"
+                                           value={expense.description}
+                                           onChange={(e) => handleExpenseChange(centerIdx, projectIdx, expenseIdx, 'description', e.target.value)}
+                                           className="w-full border-none focus:ring-0 text-xs p-1"
+                                           placeholder="Description"
+                                           style={{ minHeight: '24px' }}
+                                           disabled={!form.isEditingOpen || form.status === 'approved'}
+                                         />
+                                         <input
+                                           type="text"
+                                           value={expense.cost}
+                                           onChange={(e) => handleExpenseChange(centerIdx, projectIdx, expenseIdx, 'cost', e.target.value)}
+                                           className="w-full border-none focus:ring-0 text-xs p-1"
+                                           placeholder="Cost"
+                                           style={{ minHeight: '24px' }}
+                                           disabled={!form.isEditingOpen || form.status === 'approved'}
+                                         />
+                                       </div>
+                                     ))}
+                                     {form.isEditingOpen && (
+                                       <button
+                                         type="button"
+                                         onClick={() => addExpense(centerIdx, projectIdx)}
+                                         className="text-xs text-blue-600 hover:text-blue-700 mt-2"
+                                       >
+                                         + Add Expense
+                                       </button>
+                                     )}
+                                   </div>
+                                 </td>
+                               <td className="border border-gray-300 p-2">
+                                 <input
+                                   type="text"
+                                   value={project.responsible}
+                                   onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'responsible', e.target.value)}
+                                   className="w-full border-none focus:ring-0 text-sm"
+                                    disabled={!form.isEditingOpen || form.status === 'approved'}
+                                 />
+                               </td>
+                               <td className="border border-gray-300 p-2">
+                                  {form.isEditingOpen && center.projects.length > 1 && (
+                                   <button
+                                     type="button"
+                                     onClick={() => removeProject(centerIdx, projectIdx)}
+                                     className="text-danger-600 hover:text-danger-700"
+                                   >
+                                     <Trash2 className="h-4 w-4" />
+                                   </button>
+                                 )}
+                               </td>
+                             </tr>
+                           ))}
+                         </tbody>
                       </table>
                     </div>
                   </div>
