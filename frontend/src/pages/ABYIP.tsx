@@ -310,6 +310,13 @@ const ABYIP: React.FC = () => {
     <title>ABYIP Print</title>
     <style>
       @page { size: 13in 8.5in; margin: 8mm; }
+      body { 
+        font-family: 'Calibri', Arial, sans-serif; 
+        font-size: 12pt; 
+        margin: 0; 
+        padding: 0;
+        background: white;
+      }
       html, body { background: white; }
       .print-content { width: 13in !important; min-height: 8.5in !important; padding: 18px; }
       table { page-break-inside: auto; border-collapse: collapse; width: 100%; font-size: 9pt; }
@@ -392,7 +399,7 @@ const ABYIP: React.FC = () => {
             {Array.from({ length: 3 }, (_, i) => {
               const year = new Date().getFullYear() + i;
               const hasABYIP = allABYIPs.some(abyip => abyip.year === year.toString());
-              return (
+  return (
                 <option key={year} value={year.toString()}>
                   {year} {hasABYIP ? '(Created)' : '(Available)'}
                 </option>
@@ -800,25 +807,25 @@ const ABYIP: React.FC = () => {
                  
                  return (
                    <div key={`${ci}-${pageNum}`} style={{ pageBreakAfter: 'always' }}>
-                     {/* Header - repeated on every page */}
-                     <div className="mb-6" style={{ position: 'relative' }}>
+                     {/* Header - repeated on every page - Matching CBYDP style exactly */}
+                     <div className="mb-3" style={{ position: 'relative' }}>
                        {/* Annex B - Top Right */}
                        <div style={{ position: 'absolute', top: 0, right: 0 }}>
-                         <div style={{ fontSize: '9pt', fontWeight: '600', border: '1px solid #000', padding: '4px 8px' }}>Annex "B"</div>
+                         <div className="text-xs font-semibold border border-gray-700 px-2 py-1">Annex "B"</div>
                        </div>
 
                        {/* Barangay Logo */}
                        {form.showLogoInPrint && skProfile?.logo && (
-                         <div style={{ width: '100%', textAlign: 'center', marginBottom: '8px' }}>
+                         <div className="w-full flex justify-center mb-2">
                            <img src={skProfile.logo} alt="Barangay Logo" style={{ width: '0.9in', height: '0.9in', objectFit: 'cover' }} />
                          </div>
                        )}
 
-                       {/* Barangay + SK - Matching CBYDP format */}
-                       <div style={{ textAlign: 'center', lineHeight: 1.2, marginBottom: '8px' }}>
-                         <div style={{ fontSize: '16pt', fontWeight: 'bold', marginBottom: '4px' }}>
-                           <span>Barangay </span>
-                           <span style={{ borderBottom: '1px solid #000', display: 'inline-block', minWidth: '2.8in' }}>
+                       {/* Barangay + SK - Matching CBYDP format exactly */}
+                       <div className="text-center leading-tight mb-2">
+                         <div className="text-base font-bold mb-1">
+                           <span style={{ fontSize: '16pt', fontWeight: 'bold' }}>Barangay </span>
+                           <span style={{ fontSize: '16pt', fontWeight: 'bold' }}>
                              {skProfile?.barangay || '\u00A0'}
                            </span>
                          </div>
@@ -826,52 +833,62 @@ const ABYIP: React.FC = () => {
                        </div>
 
                        {/* Title */}
-                       <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-                         <div style={{ fontSize: '10pt', fontWeight: '600' }}>ANNUAL BARANGAY YOUTH INVESTMENT PROGRAM (ABYIP)</div>
+                       <div className="text-center mb-2">
+                         <div className="text-sm font-semibold">ANNUAL BARANGAY YOUTH INVESTMENT PROGRAM (ABYIP)</div>
                        </div>
                        
-                       {/* Region / Province / City - Matching CBYDP format */}
-                       <div style={{ fontSize: '9pt', marginBottom: '4px' }}>
-                         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-                           <span style={{ marginRight: '8px' }}>Region:</span>
-                           <span style={{ borderBottom: '1px solid #000', display: 'inline-block', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
+                       {/* Region / Province / City - Matching CBYDP format exactly */}
+                       <div className="text-xs mb-1" style={{ width: '100%' }}>
+                         <div className="flex items-center mb-1">
+                           <span className="mr-2">Region:</span>
+                           <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
                          </div>
-                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                           <div style={{ display: 'flex', alignItems: 'center' }}>
-                             <span style={{ marginRight: '8px' }}>Province:</span>
-                             <span style={{ borderBottom: '1px solid #000', display: 'inline-block', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
+                         <div className="flex items-center justify-between">
+                           <div className="flex items-center">
+                             <span className="mr-2">Province:</span>
+                             <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
                            </div>
-                           <div style={{ display: 'flex', alignItems: 'center', marginLeft: '0.5in' }}>
-                             <span style={{ marginRight: '8px' }}>City/Municipality:</span>
-                             <span style={{ borderBottom: '1px solid #000', display: 'inline-block', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
+                           <div className="flex items-center" style={{ marginLeft: '0.5in' }}>
+                             <span className="mr-2">City/Municipality:</span>
+                             <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
                            </div>
                          </div>
                        </div>
 
-                       {/* ABYIP CY - Matching CBYDP format */}
-                       <div style={{ textAlign: 'center', fontSize: '9pt', margin: '8px 0' }}>
+                       {/* ABYIP CY - Matching CBYDP format exactly */}
+                       <div className="text-center text-xs my-2">
                          <span>ANNUAL BARANGAY YOUTH INVESTMENT PROGRAM (ABYIP) CY</span>
-                         <span style={{ borderBottom: '1px solid #000', display: 'inline-block', width: '0.6in', margin: '0 4px' }}>
+                         <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '0.6in', margin: '0 0.1in' }}>
                            {form.year || '\u00A0'}
                          </span>
                        </div>
+                     </div>
 
-                       {/* Center of Participation - Matching CBYDP format */}
-                       <div style={{ fontSize: '9pt', marginBottom: '4px' }}>
-                         <span style={{ fontWeight: '600' }}>CENTER OF PARTICIPATION:</span>
-                         <span style={{ borderBottom: '1px solid #000', display: 'inline-block', width: '3.0in', marginLeft: '4px' }}>
+                     {/* Center of Participation and Agenda - show on every page for clarity - Matching CBYDP format exactly */}
+                     <div className="mb-3">
+                       {/* Center of Participation line */}
+                       <div className="text-xs mb-1">
+                         <span className="font-semibold">CENTER OF PARTICIPATION:</span>
+                         <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '3.0in', marginLeft: '0.1in' }}>
                            {center.name || '\u00A0'}
                          </span>
                        </div>
 
-                       {/* Agenda Statement - Matching CBYDP format */}
-                       <div style={{ fontSize: '9pt', marginBottom: '8px' }}>
-                         <div style={{ marginBottom: '4px' }}>Agenda Statement:</div>
+                       {/* Agenda Statement */}
+                       <div className="text-xs mb-2">
+                         <div className="mb-1">Agenda Statement:</div>
                          <div style={{ borderBottom: '1px solid #000', minHeight: '0.25in' }}>
                            {center.agenda || '\u00A0'}
                          </div>
                        </div>
                      </div>
+                     
+                     {/* Page indicator for multi-page centers - Matching CBYDP format */}
+                     {totalPages > 1 && (
+                       <div className="text-xs text-right mt-2 mb-2">
+                         Page {pageNum + 1} of {totalPages}
+                       </div>
+                     )}
 
                      {/* ABYIP Table - Exact template format */}
                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt', border: '1px solid #000' }}>
@@ -955,8 +972,8 @@ const ABYIP: React.FC = () => {
                            </div>
                            <div style={{ fontSize: '9pt', marginTop: '4px' }}>SK Chairperson</div>
                          </div>
-                       </div>
-                     </div>
+        </div>
+      </div>
                    </div>
                  );
                });

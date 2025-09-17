@@ -4,6 +4,7 @@ import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP, uploadFile } from '../
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
+import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
 
 interface CBYDPRow {
   concern: string;
@@ -984,10 +985,11 @@ const CBYDP: React.FC = () => {
     ${styles}
                                        <style>
          @page { 
-           size: 13in 8.5in; 
+           size: 13in 8.5in landscape; 
            margin: 8mm;
          }
          html, body { background: white; }
+         body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; margin: 0; padding: 0; }
          .print-content { 
            width: 13in !important; 
            min-height: 8.5in !important; 
@@ -1061,7 +1063,7 @@ const CBYDP: React.FC = () => {
           const pageRows = center.projects.slice(startRow, endRow);
           
           content += `
-            <div style="page-break-after: always; width: 13in; min-height: 8.5in; padding: 18px; font-family: 'Times New Roman', serif; background: white;">
+            <div style="page-break-after: always; width: 13in; min-height: 8.5in; padding: 18px; font-family: 'Calibri', Arial, sans-serif; background: white;">
               <!-- Header -->
               <div style="position: relative; margin-bottom: 12px;">
                 <div style="position: absolute; top: 0; right: 0;">
@@ -1243,7 +1245,7 @@ const CBYDP: React.FC = () => {
             margin: 8mm;
           }
           body { 
-            font-family: 'Times New Roman', serif; 
+            font-family: 'Calibri', Arial, sans-serif; 
             font-size: 12pt; 
             margin: 0; 
             padding: 0;
@@ -1470,8 +1472,9 @@ const CBYDP: React.FC = () => {
         @media print {
           body * { visibility: hidden; }
           .print-content, .print-content * { visibility: visible; }
-          .print-content { position: absolute; left: 0; top: 0; width: 13in; min-height: 8.5in; background: white; transform: scale(1.03); transform-origin: top left; }
-          @page { size: 13in 8.5in; margin: 8mm; }
+          .print-area, .print-area * { visibility: visible; }
+          .print-content { position: absolute; left: 0; top: 0; width: 13in; min-height: 8.5in; background: white; }
+          @page { size: 13in 8.5in landscape; margin: 8mm; }
         }
       `}</style>
       <div className="mb-6">
@@ -1773,9 +1776,28 @@ const CBYDP: React.FC = () => {
                    <Download className="h-4 w-4 mr-2" />
                    Export to Word
                  </button>
+                 <button
+                   onClick={async () => {
+                     try {
+                       const data = mapCBYDPToTemplate({ form, skProfile });
+                       await exportDocxFromTemplate({
+                         templatePath: '/templates/cbydp_template.docx',
+                         data,
+                         outputFileName: `CBYDP_${skProfile?.barangay || 'Document'}`,
+                       });
+                     } catch (e) {
+                       console.error('CBYDP template export failed', e);
+                       alert('Failed to export Word document from template.');
+                     }
+                   }}
+                   className="btn-secondary flex items-center"
+                 >
+                   <Download className="h-4 w-4 mr-2" />
+                   Export to Word (Template)
+                 </button>
                </div>
              </div>
-                                                                                                       <div ref={printRef} className="print-content bg-white p-8" style={{ width: '13in', minHeight: '8.5in' }}>
+                                                                                                      <div ref={printRef} className="print-content" style={{ width: '13in', minHeight: '8.5in' }}>
                                                       
                                                            {/* New Multipage print structure */}
                                                                    {form.centers.map((center, ci) => {
@@ -1822,17 +1844,17 @@ const CBYDP: React.FC = () => {
  
                           {/* Region / Province / City */}
                           <div className="text-xs mb-1" style={{ width: '100%' }}>
-                            <div className="flex items-center mb-1">
-                              <span className="mr-2">Region:</span>
+                            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                              <span style={{ marginRight: '8px' }}>Region:</span>
                               <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.6in' }}>{skProfile?.region || '\u00A0'}</span>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center">
-                                <span className="mr-2">Province:</span>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', marginRight: '24px' }}>
+                                <span style={{ marginRight: '8px' }}>Province:</span>
                                 <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '1.9in' }}>{skProfile?.province || '\u00A0'}</span>
                               </div>
-                              <div className="flex items-center" style={{ marginLeft: '0.5in' }}>
-                                <span className="mr-2">City/Municipality:</span>
+                              <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <span style={{ marginRight: '8px' }}>City/Municipality:</span>
                                 <span style={{ display: 'inline-block', borderBottom: '1px solid #000', width: '2.2in' }}>{skProfile?.city || '\u00A0'}</span>
                               </div>
                             </div>
