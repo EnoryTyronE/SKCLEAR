@@ -900,117 +900,90 @@ const ABYIP: React.FC = () => {
         </div>
 
 
-        {/* Current ABYIP Status - Always Visible */}
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-          <h5 className="text-md font-semibold text-yellow-800 mb-2">Current ABYIP Status</h5>
+        {/* Combined ABYIP Status - Always Visible */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <h5 className="text-md font-semibold text-blue-800 mb-3">ABYIP Status for {form.year}</h5>
+          
+          {/* Status Badge and Basic Info */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-4">
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                 form.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
+                 form.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
+                 form.status === 'pending_kk_approval' ? 'bg-yellow-100 text-yellow-800' :
+                form.status === 'approved' ? 'bg-green-100 text-green-800' :
+                'bg-red-100 text-red-800'
+              }`}>
+                 {form.status === 'not_initiated' ? 'Not Initiated' :
+                  form.status === 'open_for_editing' ? 'Open for Editing' :
+                  form.status === 'pending_kk_approval' ? 'Pending KK Approval' :
+                 form.status === 'approved' ? 'Approved' : 'Rejected'}
+              </span>
+              {form.initiatedBy && (
+                <span className="text-sm text-blue-700">
+                  Initiated by: {form.initiatedBy}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Detailed Information Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="font-medium text-yellow-700">Year:</span>
+              <span className="font-medium text-blue-700">Year:</span>
               <div className="text-gray-600">{form.year}</div>
             </div>
             <div>
-              <span className="font-medium text-yellow-700">Status:</span>
-              <div className="text-gray-600">{form.status}</div>
-            </div>
-            <div>
-              <span className="font-medium text-yellow-700">ABYIP ID:</span>
+              <span className="font-medium text-blue-700">ABYIP ID:</span>
               <div className="text-gray-600">{existingABYIPId ? existingABYIPId.substring(0, 8) + '...' : 'None'}</div>
             </div>
             <div>
-              <span className="font-medium text-yellow-700">Centers:</span>
+              <span className="font-medium text-blue-700">Centers:</span>
               <div className="text-gray-600">{form.centers?.length || 0}</div>
+            </div>
+            <div>
+              <span className="font-medium text-blue-700">Created:</span>
+              <div className="text-gray-600">{form.initiatedAt ? new Date(form.initiatedAt).toLocaleDateString() : 'N/A'}</div>
             </div>
           </div>
         </div>
 
-        {/* ABYIP Status Details - Toggleable */}
+        {/* Additional Details - Toggleable */}
         {showManagement && (
           <div className="space-y-4">
-            {/* ABYIP Status for Current Year */}
-            {existingABYIPId && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h5 className="font-semibold text-blue-900 mb-2">ABYIP Status for {form.year}</h5>
-                <div className="flex items-center space-x-4">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                     form.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
-                     form.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
-                     form.status === 'pending_kk_approval' ? 'bg-yellow-100 text-yellow-800' :
-                    form.status === 'approved' ? 'bg-green-100 text-green-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                     {form.status === 'not_initiated' ? 'Not Initiated' :
-                      form.status === 'open_for_editing' ? 'Open for Editing' :
-                      form.status === 'pending_kk_approval' ? 'Pending KK Approval' :
-                     form.status === 'approved' ? 'Approved' : 'Rejected'}
-                  </span>
-                  {form.initiatedBy && (
-                    <span className="text-sm text-blue-700">
-                      Initiated by: {form.initiatedBy}
-                    </span>
-                  )}
-                  {form.closedBy && (
-                    <span className="text-sm text-blue-700">
-                      Closed by: {form.closedBy}
-                    </span>
-                  )}
-                  {form.kkApprovedBy && (
-                    <span className="text-sm text-green-700">
-                      KK Approved by: {form.kkApprovedBy}
-                    </span>
-                  )}
-                  {form.lastEditedBy && (
-                    <span className="text-sm text-blue-700">
-                      Last edited by: {form.lastEditedBy}
-                    </span>
-                  )}
-                  {form.status === 'approved' && form.approvedBy && (
-                    <span className="text-sm text-green-700">
-                      Approved by: {form.approvedBy}
-                    </span>
-                  )}
-                  {form.status === 'approved' && form.kkProofImage && (
-                    <div className="mt-2">
-                      <span className="text-sm text-green-700">KK Proof Image:</span>
-                      <div className="mt-1">
-                        <img 
-                          src={form.kkProofImage} 
-                          alt="KK Approval Proof" 
-                          className="w-24 h-24 object-cover rounded border"
-                          style={{ maxWidth: '96px', maxHeight: '96px' }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {form.status === 'rejected' && form.rejectionReason && (
-                    <span className="text-sm text-red-700">
-                      Reason: {form.rejectionReason}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-
-            {/* Available ABYIPs List */}
+            {/* All ABYIPs Overview */}
             {allABYIPs.length > 0 && (
-              <div>
-                <h5 className="text-sm font-medium text-blue-800 mb-2">Existing ABYIPs:</h5>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-white border border-blue-200 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-blue-800 mb-3">All ABYIPs Overview</h5>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {allABYIPs.map((abyip) => (
-                    <div key={abyip.id} className="bg-white border border-blue-200 rounded p-3">
-                      <div className="font-medium text-blue-700">Year: {abyip.year}</div>
-                      <div className="text-sm text-gray-600">Status: {abyip.status}</div>
-                      <div className="text-sm text-gray-600">
+                    <div key={abyip.id} className="bg-gray-50 border border-gray-200 rounded p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-medium text-gray-700">Year: {abyip.year}</div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          abyip.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
+                          abyip.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
+                          abyip.status === 'pending_kk_approval' ? 'bg-yellow-100 text-yellow-800' :
+                          abyip.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {abyip.status === 'not_initiated' ? 'Not Initiated' :
+                           abyip.status === 'open_for_editing' ? 'Open' :
+                           abyip.status === 'pending_kk_approval' ? 'Pending' :
+                           abyip.status === 'approved' ? 'Approved' : 'Rejected'}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600 mb-2">
                         Created: {abyip.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
                       </div>
-                      <div className="text-sm text-gray-600">Centers: {abyip.centers?.length || 0}</div>
+                      <div className="text-sm text-gray-600 mb-3">Centers: {abyip.centers?.length || 0}</div>
                       <button
                         onClick={() => {
                           setSelectedABYIPYear(abyip.year);
                           setForm(prev => ({ ...prev, year: abyip.year }));
                           loadExistingABYIP(abyip.year);
                         }}
-                        className="mt-2 text-xs bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded"
+                        className="w-full text-xs bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded transition-colors"
                       >
                         Load This ABYIP
                       </button>
