@@ -40,6 +40,7 @@ interface ABYIPForm {
   status: 'not_initiated' | 'open_for_editing' | 'pending_approval' | 'approved' | 'rejected';
   isEditingOpen: boolean;
   year: string;
+  yearlyBudget: string; // Total budget for the year
   initiatedBy?: string;
   initiatedAt?: Date;
   closedBy?: string;
@@ -76,12 +77,13 @@ const defaultCenter: ABYIPCenter = {
 const ABYIP: React.FC = () => {
   const { user, skProfile } = useAuth();
   const [form, setForm] = useState<ABYIPForm>({
-    centers: [{ ...defaultCenter }],
+    centers: [],
     skMembers: [],
     showLogoInPrint: true,
     status: 'not_initiated',
     isEditingOpen: false,
     year: new Date().getFullYear().toString(),
+    yearlyBudget: '',
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -94,6 +96,191 @@ const ABYIP: React.FC = () => {
   const [selectedCenterIdxs, setSelectedCenterIdxs] = useState<number[]>([]);
   const [allABYIPs, setAllABYIPs] = useState<any[]>([]);
   const [selectedABYIPYear, setSelectedABYIPYear] = useState<string>('');
+  const [projectSelectionModalOpen, setProjectSelectionModalOpen] = useState(false);
+  const [selectedCenterForProject, setSelectedCenterForProject] = useState<number | null>(null);
+  const [cbydpProjects, setCbydpProjects] = useState<any[]>([]);
+  const [selectedCbydpProjects, setSelectedCbydpProjects] = useState<number[]>([]);
+
+  // Helper functions to create mandatory centers
+  const createAdministrativeServiceCenter = (): ABYIPCenter => ({
+    name: 'Administrative Service',
+    agenda: 'Administrative and operational expenses for SK operations',
+    projects: [
+      {
+        referenceCode: 'ADM001',
+        ppas: 'Honoraria',
+        description: 'Monthly honoraria for SK officials',
+        expectedResult: 'Proper compensation for SK officials',
+        performanceIndicator: 'Number of officials receiving honoraria',
+        periodOfImplementation: 'January - December',
+        budget: { mooe: '', co: '', ps: '', total: '' },
+        personResponsible: 'SK Treasurer',
+      },
+      {
+        referenceCode: 'ADM002',
+        ppas: 'Membership Dues and Contribution',
+        description: 'Annual membership dues and contributions to SK Federation',
+        expectedResult: 'Active membership in SK Federation',
+        performanceIndicator: 'Payment of membership dues',
+        periodOfImplementation: 'January - December',
+        budget: { mooe: '', co: '', ps: '', total: '' },
+        personResponsible: 'SK Treasurer',
+      },
+      {
+        referenceCode: 'ADM003',
+        ppas: 'Fidelity Bond Premiums',
+        description: 'Annual fidelity bond premiums for SK officials',
+        expectedResult: 'Protected SK funds and assets',
+        performanceIndicator: 'Valid fidelity bond coverage',
+        periodOfImplementation: 'January - December',
+        budget: { mooe: '', co: '', ps: '', total: '' },
+        personResponsible: 'SK Treasurer',
+      },
+    ],
+  });
+
+  const createGovernanceCenter = (): ABYIPCenter => ({
+    name: 'Governance / Active Citizenship',
+    agenda: 'Youth governance and active citizenship programs',
+    projects: [
+      {
+        referenceCode: 'GOV001',
+        ppas: 'Linggo ng Kabataan',
+        description: 'Annual celebration of Linggo ng Kabataan',
+        expectedResult: 'Successful celebration of youth week',
+        performanceIndicator: 'Number of participants and activities',
+        periodOfImplementation: 'March - April',
+        budget: { mooe: '', co: '', ps: '', total: '' },
+        personResponsible: 'SK Chairperson',
+      },
+      {
+        referenceCode: 'GOV002',
+        ppas: 'PYO COA Training',
+        description: 'Training on Commission on Audit requirements for PYO',
+        expectedResult: 'Compliant financial management',
+        performanceIndicator: 'Number of officials trained',
+        periodOfImplementation: 'January - December',
+        budget: { mooe: '', co: '', ps: '', total: '' },
+        personResponsible: 'SK Treasurer',
+      },
+      {
+        referenceCode: 'GOV003',
+        ppas: 'Leadership Development Workshops',
+        description: 'Capacity building workshops for SK officials and youth leaders',
+        expectedResult: 'Enhanced leadership skills of youth',
+        performanceIndicator: 'Number of participants trained',
+        periodOfImplementation: 'January - December',
+        budget: { mooe: '', co: '', ps: '', total: '' },
+        personResponsible: 'SK Chairperson',
+      },
+    ],
+  });
+
+  const initializeMandatoryCenters = () => {
+    if (form.centers.length === 0) {
+      setForm(prev => ({
+        ...prev,
+        centers: [
+          createAdministrativeServiceCenter(),
+          createGovernanceCenter(),
+        ],
+      }));
+    }
+  };
+
+  // Load CBYDP projects for selection
+  const loadCbydpProjects = useCallback(async () => {
+    try {
+      const cbydp = await getCBYDP();
+      if (cbydp && (cbydp as any).centers) {
+        // Flatten all projects from all centers
+        const allProjects = (cbydp as any).centers.flatMap((center: any) => 
+          (center.programs || []).map((program: any) => ({
+            ...program,
+            sourceCenter: center.name,
+            type: 'program'
+          }))
+        );
+        setCbydpProjects(allProjects);
+      }
+    } catch (error) {
+      console.error('Error loading CBYDP projects:', error);
+    }
+  }, []);
+
+  // Handle project selection from CBYDP
+  const handleProjectSelection = () => {
+    if (selectedCenterForProject === null || selectedCbydpProjects.length === 0) return;
+
+    const selectedProjects = selectedCbydpProjects.map(idx => cbydpProjects[idx]);
+    const convertedProjects = selectedProjects.map((project: any) => ({
+      referenceCode: project.referenceCode || '',
+      ppas: project.ppas || project.program || '',
+      description: project.description || '',
+      expectedResult: project.expectedResult || '',
+      performanceIndicator: project.performanceIndicator || '',
+      periodOfImplementation: project.periodOfImplementation || '',
+      budget: {
+        mooe: project.budget?.mooe || '',
+        co: project.budget?.co || '',
+        ps: project.budget?.ps || '',
+        total: project.budget?.total || '',
+      },
+      personResponsible: project.personResponsible || '',
+    }));
+
+    const updatedCenters = form.centers.map((c, i) =>
+      i === selectedCenterForProject 
+        ? { ...c, projects: [...c.projects, ...convertedProjects] }
+        : c
+    );
+    setForm(prev => ({ ...prev, centers: updatedCenters }));
+
+    // Close modal and reset state
+    setProjectSelectionModalOpen(false);
+    setSelectedCenterForProject(null);
+    setSelectedCbydpProjects([]);
+  };
+
+  // Open project selection modal
+  const openProjectSelection = (centerIdx: number) => {
+    setSelectedCenterForProject(centerIdx);
+    setProjectSelectionModalOpen(true);
+    loadCbydpProjects();
+  };
+
+  // Budget calculation helper functions
+  const calculateProjectTotal = (budget: { mooe: string; co: string; ps: string; total: string }) => {
+    const mooe = parseFloat(budget.mooe) || 0;
+    const co = parseFloat(budget.co) || 0;
+    const ps = parseFloat(budget.ps) || 0;
+    return mooe + co + ps;
+  };
+
+  const calculateCenterSubtotal = (center: ABYIPCenter) => {
+    return center.projects.reduce((total, project) => {
+      return total + calculateProjectTotal(project.budget);
+    }, 0);
+  };
+
+  const calculateGrandTotal = () => {
+    return form.centers.reduce((total, center) => {
+      return total + calculateCenterSubtotal(center);
+    }, 0);
+  };
+
+  const isBudgetBalanced = () => {
+    const yearlyBudget = parseFloat(form.yearlyBudget) || 0;
+    const grandTotal = calculateGrandTotal();
+    return Math.abs(yearlyBudget - grandTotal) < 0.01; // Allow for small rounding differences
+  };
+
+  // Initialize mandatory centers when form is first loaded
+  useEffect(() => {
+    if (form.centers.length === 0 && form.status === 'not_initiated') {
+      initializeMandatoryCenters();
+    }
+  }, [form.centers.length, form.status]);
 
   // Load all ABYIPs for debugging
   const loadAllABYIPs = useCallback(async () => {
@@ -140,12 +327,13 @@ const ABYIP: React.FC = () => {
         console.log('No existing ABYIP found for year:', year, 'starting with empty form');
         // Reset to default form but keep the year
         setForm(prev => ({
-          centers: [{ ...defaultCenter }],
+          centers: [],
           skMembers: prev.skMembers,
           showLogoInPrint: true,
           status: 'not_initiated',
           isEditingOpen: false,
-          year: year
+          year: year,
+          yearlyBudget: '',
         }));
         setExistingABYIPId(null);
         setSaved(false);
@@ -712,12 +900,13 @@ const ABYIP: React.FC = () => {
                 
                 // Reset form state
                 setForm({
-                  centers: [{ ...defaultCenter }],
+                  centers: [],
                   skMembers: [],
                   showLogoInPrint: true,
                   status: 'not_initiated',
                   isEditingOpen: false,
-                  year: new Date().getFullYear().toString()
+                  year: new Date().getFullYear().toString(),
+                  yearlyBudget: '',
                 });
                 setExistingABYIPId(null);
                 setSelectedABYIPYear('');
@@ -784,6 +973,7 @@ const ABYIP: React.FC = () => {
                 <button
                   onClick={async () => {
                     try {
+                      console.log('=== ABYIP EXPORT STARTED ===');
                       console.log('ABYIP Form data before export:', form);
                       console.log('ABYIP SK Profile data:', skProfile);
                       console.log('ABYIP Current user:', user);
@@ -800,14 +990,26 @@ const ABYIP: React.FC = () => {
                       
                       const data = mapABYIPToTemplate(payload);
                       console.log('ABYIP Mapped data for export:', data);
+                      
+                      // Verify template path exists
+                      const templatePath = '/templates/abyip_template.docx';
+                      console.log('Using template path:', templatePath);
+                      
+                      const outputFileName = `ABYIP_${skProfile?.barangay || 'Document'}_${form.year || '2024'}`;
+                      console.log('Output filename:', outputFileName);
+                      
                       await exportDocxFromTemplate({
-                        templatePath: '/templates/abyip_template.docx',
+                        templatePath,
                         data,
-                        outputFileName: `ABYIP_${skProfile?.barangay || 'Document'}_${form.year || '2024'}`,
+                        outputFileName,
                       });
+                      
+                      console.log('=== ABYIP EXPORT COMPLETED SUCCESSFULLY ===');
+                      alert('ABYIP document exported successfully!');
                     } catch (e) {
                       console.error('ABYIP template export failed', e);
-                      alert('Failed to export ABYIP Word document from template.');
+                      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+                      alert(`Failed to export ABYIP Word document: ${errorMessage}`);
                     }
                   }}
                   className="btn-secondary flex items-center"
@@ -815,6 +1017,19 @@ const ABYIP: React.FC = () => {
                   <Download className="h-4 w-4 mr-2" />
                   Export to Word
                 </button>
+              </div>
+            </div>
+            
+            {/* Note about printing process */}
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg">
+              <div className="flex items-start">
+                <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Note about printing:</p>
+                  <p className="text-sm mt-1">
+                    To print the ABYIP, you must first export it to Word, then manually add the logo to the downloaded document, and then print from there.
+                  </p>
+                </div>
               </div>
             </div>
             
@@ -1045,6 +1260,58 @@ const ABYIP: React.FC = () => {
             </div>
           )}
 
+          {/* Yearly Budget */}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="text-lg font-semibold text-gray-900">Budget Information</h3>
+            </div>
+            <div className="card-body">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Total Yearly Budget (₱) *
+                </label>
+                <input
+                  type="number"
+                  value={form.yearlyBudget}
+                  onChange={(e) => setForm(prev => ({ ...prev, yearlyBudget: e.target.value }))}
+                  disabled={!form.isEditingOpen || form.status === 'approved'}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter total yearly budget"
+                />
+              </div>
+
+              {/* Budget Summary */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h5 className="font-semibold text-gray-800 mb-2">Budget Summary</h5>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Yearly Budget:</span>
+                    <span className="ml-2 font-semibold">₱{parseFloat(form.yearlyBudget || '0').toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Total Allocated:</span>
+                    <span className={`ml-2 font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
+                      ₱{calculateGrandTotal().toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 pt-2 border-t border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Remaining:</span>
+                    <span className={`font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
+                      ₱{(parseFloat(form.yearlyBudget || '0') - calculateGrandTotal()).toLocaleString()}
+                    </span>
+                  </div>
+                  {!isBudgetBalanced() && (
+                    <div className="mt-2 text-sm text-red-600">
+                      ⚠️ Budget is not balanced. Total allocated must equal yearly budget.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Centers of Participation */}
           <div className="space-y-4">
             {form.centers.map((center, centerIdx) => (
@@ -1165,38 +1432,48 @@ const ABYIP: React.FC = () => {
                     <div className="flex justify-between items-center">
                       <h4 className="font-medium text-gray-900">Projects</h4>
                       {form.status !== 'not_initiated' && form.isEditingOpen && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const updatedCenters = form.centers.map((c, i) =>
-                              i === centerIdx ? { ...c, projects: [...c.projects, { ...defaultRow }] } : c
-                            );
-                            const updatedForm = { ...form, centers: updatedCenters };
-                            setForm(updatedForm);
-                            
-                            // Auto-save if ABYIP already exists
-                            if (existingABYIPId) {
-                              try {
-                                const abyipData = {
-                                  ...updatedForm,
-                                  lastEditedBy: user?.name,
-                                  lastEditedAt: new Date(),
-                                  updatedAt: new Date()
-                                };
-                                await updateABYIP(existingABYIPId, abyipData as any);
-                                setSaved(true);
-                                setTimeout(() => setSaved(false), 3000);
-                              } catch (error) {
-                                console.error('Error auto-saving after adding project:', error);
-                                setError('Failed to auto-save. Please click Save ABYIP manually.');
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const updatedCenters = form.centers.map((c, i) =>
+                                i === centerIdx ? { ...c, projects: [...c.projects, { ...defaultRow }] } : c
+                              );
+                              const updatedForm = { ...form, centers: updatedCenters };
+                              setForm(updatedForm);
+                              
+                              // Auto-save if ABYIP already exists
+                              if (existingABYIPId) {
+                                try {
+                                  const abyipData = {
+                                    ...updatedForm,
+                                    lastEditedBy: user?.name,
+                                    lastEditedAt: new Date(),
+                                    updatedAt: new Date()
+                                  };
+                                  await updateABYIP(existingABYIPId, abyipData as any);
+                                  setSaved(true);
+                                  setTimeout(() => setSaved(false), 3000);
+                                } catch (error) {
+                                  console.error('Error auto-saving after adding project:', error);
+                                  setError('Failed to auto-save. Please click Save ABYIP manually.');
+                                }
                               }
-                            }
-                          }}
-                          className="btn-secondary flex items-center"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Project
-                        </button>
+                            }}
+                            className="btn-secondary flex items-center"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            New Project
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openProjectSelection(centerIdx)}
+                            className="btn-primary flex items-center"
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            From CBYDP
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -1520,6 +1797,106 @@ const ABYIP: React.FC = () => {
                 Add Center of Participation
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Project Selection Modal */}
+      {projectSelectionModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Select Projects from CBYDP</h3>
+              <button
+                onClick={() => {
+                  setProjectSelectionModalOpen(false);
+                  setSelectedCenterForProject(null);
+                  setSelectedCbydpProjects([]);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <span className="text-xl">&times;</span>
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-sm text-gray-600">
+                Select projects from your approved CBYDP to add to this center. You can edit them after adding.
+              </p>
+            </div>
+
+            {cbydpProjects.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p>No CBYDP projects found. Please ensure you have an approved CBYDP.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {cbydpProjects.map((project, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedCbydpProjects.includes(idx)
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => {
+                      setSelectedCbydpProjects(prev =>
+                        prev.includes(idx)
+                          ? prev.filter(i => i !== idx)
+                          : [...prev, idx]
+                      );
+                    }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedCbydpProjects.includes(idx)}
+                            onChange={() => {}}
+                            className="rounded"
+                          />
+                          <span className="font-medium text-sm">
+                            {project.ppas || project.program || 'Untitled Project'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            ({project.sourceCenter})
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 ml-6">
+                          {project.description || 'No description available'}
+                        </p>
+                        {project.referenceCode && (
+                          <p className="text-xs text-gray-500 ml-6">
+                            Ref: {project.referenceCode}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => {
+                  setProjectSelectionModalOpen(false);
+                  setSelectedCenterForProject(null);
+                  setSelectedCbydpProjects([]);
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProjectSelection}
+                disabled={selectedCbydpProjects.length === 0}
+                className="btn-primary"
+              >
+                Add Selected Projects ({selectedCbydpProjects.length})
+              </button>
+            </div>
           </div>
         </div>
       )}

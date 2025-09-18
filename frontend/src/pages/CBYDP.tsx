@@ -3,8 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP, uploadFile } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
-import { exportDocxFromTemplate, mapCBYDPToTemplate, testTemplateExport, inspectTemplate } from '../services/docxExport';
+import { FileText, Plus, Trash2, Save, CheckCircle, RefreshCw, Download, AlertCircle, Eye } from 'lucide-react';
+import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
 
 interface CBYDPRow {
   concern: string;
@@ -1532,41 +1532,6 @@ const CBYDP: React.FC = () => {
                    Export to Word
                  </button>
                  
-                 {/* DEBUG TEST BUTTON */}
-                 <button
-                   onClick={async () => {
-                     try {
-                       console.log('=== RUNNING DEBUG TEST ===');
-                       await testTemplateExport();
-                       alert('Debug test completed! Check console for details.');
-                     } catch (e) {
-                       console.error('Debug test failed', e);
-                       alert('Debug test failed. Check console for details.');
-                     }
-                   }}
-                   className="btn-primary flex items-center bg-red-600 hover:bg-red-700"
-                 >
-                   <AlertCircle className="h-4 w-4 mr-2" />
-                   DEBUG TEST
-                 </button>
-                 
-                 {/* INSPECT TEMPLATE BUTTON */}
-                 <button
-                   onClick={async () => {
-                     try {
-                       console.log('=== INSPECTING TEMPLATE ===');
-                       await inspectTemplate();
-                       alert('Template inspection completed! Check console for details.');
-                     } catch (e) {
-                       console.error('Template inspection failed', e);
-                       alert('Template inspection failed. Check console for details.');
-                     }
-                   }}
-                   className="btn-primary flex items-center bg-blue-600 hover:bg-blue-700"
-                 >
-                   <Eye className="h-4 w-4 mr-2" />
-                   INSPECT TEMPLATE
-                 </button>
                </div>
              </div>
              

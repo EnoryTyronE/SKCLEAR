@@ -10,131 +10,7 @@ async function fetchBinary(path: string): Promise<ArrayBuffer> {
   return await res.arrayBuffer();
 }
 
-// Function to inspect template content
-export async function inspectTemplate() {
-  console.log('=== INSPECTING TEMPLATE ===');
-  
-  try {
-    const content = await fetchBinary('/templates/cbydp_template.docx');
-    const zip = new PizZip(content);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      delimiters: { start: '[[', end: ']]' },
-    });
-    
-    // Get the template content
-    const templateFile = doc.getZip().file('word/document.xml');
-    if (!templateFile) {
-      console.error('Template file not found');
-      return;
-    }
-    const templateContent = templateFile.asText();
-    console.log('Template content preview:', templateContent.substring(0, 2000));
-    
-    // Look for member-related placeholders
-    const memberMatches = templateContent.match(/\[\[[^\]]*member[^\]]*\]\]/gi);
-    console.log('Member-related placeholders found:', memberMatches);
-    
-    // Look for all placeholders
-    const allMatches = templateContent.match(/\[\[[^\]]*\]\]/gi);
-    console.log('All placeholders found:', allMatches);
-    
-  } catch (error) {
-    console.error('Template inspection failed:', error);
-  }
-}
 
-// Test function to debug template issues
-export async function testTemplateExport() {
-  console.log('=== TESTING TEMPLATE EXPORT ===');
-  
-  // Try multiple different structures to see which one works
-  const testData = {
-    logo: '',
-    barangay: 'Test Barangay',
-    region: 'Test Region',
-    province: 'Test Province',
-    city: 'Test City',
-    term_start: '2023',
-    term_end: '2026',
-    centers: [],
-    // FLATTENED STRUCTURE - Test both approaches
-    'prepared_by.secretary': 'TEST SECRETARY NAME',
-    'prepared_by.chairperson': 'TEST CHAIRPERSON NAME',
-    'prepared_by.treasurer': 'TEST TREASURER NAME',
-    // Also keep the nested structure as backup
-    prepared_by: {
-      secretary: 'TEST SECRETARY NAME NESTED',
-      chairperson: 'TEST CHAIRPERSON NAME NESTED',
-      treasurer: 'TEST TREASURER NAME NESTED',
-    },
-    sk_federation_president: 'TEST FEDERATION PRESIDENT',
-    
-    // CORRECTED TEMPLATE STRUCTURE - Based on template screenshot
-    // Template expects: [[#member_rows]] [[left.name]] [[position]] [[right.name]] [[position]] [[/member_rows]]
-    member_rows: [
-      { 
-        'left.name': 'Left Member 1',
-        'left.position': 'SK Kagawad',
-        'right.name': 'Right Member 1', 
-        'right.position': 'SK Kagawad'
-      },
-      { 
-        'left.name': 'Left Member 2',
-        'left.position': 'SK Kagawad',
-        'right.name': 'Right Member 2',
-        'right.position': 'SK Kagawad'
-      },
-      { 
-        'left.name': 'Left Member 3',
-        'left.position': 'SK Kagawad',
-        'right.name': 'Right Member 3',
-        'right.position': 'SK Kagawad'
-      }
-    ],
-    
-    // Alternative structure - try direct member names
-    'member_rows.0.left.name': 'DIRECT KAGAWAD 1',
-    'member_rows.0.right.name': 'DIRECT KAGAWAD 2',
-    'member_rows.1.left.name': 'DIRECT KAGAWAD 3',
-    'member_rows.1.right.name': 'DIRECT KAGAWAD 4',
-    
-    // Another alternative - try simple array
-    members: [
-      'SIMPLE MEMBER 1',
-      'SIMPLE MEMBER 2',
-      'SIMPLE MEMBER 3',
-      'SIMPLE MEMBER 4',
-      'SIMPLE MEMBER 5'
-    ],
-    
-    // DIRECT INDIVIDUAL MEMBER FIELDS - Try this approach
-    member1: 'DIRECT MEMBER 1',
-    member2: 'DIRECT MEMBER 2',
-    member3: 'DIRECT MEMBER 3',
-    member4: 'DIRECT MEMBER 4',
-    member5: 'DIRECT MEMBER 5',
-    member6: 'DIRECT MEMBER 6',
-    member7: 'DIRECT MEMBER 7',
-    member8: 'DIRECT MEMBER 8',
-    member9: 'DIRECT MEMBER 9',
-    member10: 'DIRECT MEMBER 10'
-  };
-  
-  console.log('Test data:', testData);
-  
-  try {
-    await exportDocxFromTemplate({
-      templatePath: '/templates/cbydp_template.docx',
-      data: testData,
-      outputFileName: 'TEST_CBYDP_DEBUG'
-    });
-    console.log('Test export completed successfully');
-  } catch (error) {
-    console.error('Test export failed:', error);
-  }
-}
 
 export async function exportDocxFromTemplate(options: {
   templatePath: string;
@@ -506,41 +382,20 @@ export function mapABYIPToTemplate(payload: any) {
     });
   }
   
-  // FALLBACK: Only create test member rows if absolutely no real data is found
+  // If no real SK members found, leave member rows empty
   if (memberRows.length === 0) {
-    console.log('No real SK members found for ABYIP, creating minimal test data');
-    memberRows = [
-      { 
-        'left.name': 'No SK Members Found',
-        'left.position': 'Please add SK members in setup',
-        'right.name': '',
-        'right.position': ''
-      }
-    ];
+    console.log('No real SK members found for ABYIP');
   }
   
   console.log('ABYIP Member rows:', memberRows);
   
-  // DIRECT FIX: Ensure we always have valid names for the template
-  let secretaryName = memberNames.secretary?.name || 'Secretary Name';
-  let chairpersonName = memberNames.chairperson?.name || 'Chairperson Name';
-  let treasurerName = memberNames.treasurer?.name || 'Treasurer Name';
-  let federationPresidentName = memberNames.federationPresident || 'Federation President Name';
+  // Get real member names from the data
+  let secretaryName = memberNames.secretary?.name || '';
+  let chairpersonName = memberNames.chairperson?.name || '';
+  let treasurerName = memberNames.treasurer?.name || '';
+  let federationPresidentName = memberNames.federationPresident || '';
   
-  // TEMPORARY DEBUG: Force specific names to test template
-  if (secretaryName === 'Secretary Name' || !secretaryName || secretaryName === 'undefined') {
-    secretaryName = 'John Doe';
-  }
-  if (chairpersonName === 'Chairperson Name' || !chairpersonName || chairpersonName === 'undefined') {
-    chairpersonName = 'Jane Smith';
-  }
-  if (treasurerName === 'Treasurer Name' || !treasurerName || treasurerName === 'undefined') {
-    treasurerName = 'Mike Johnson';
-  }
-  if (federationPresidentName === 'Federation President Name' || !federationPresidentName || federationPresidentName === 'undefined') {
-    federationPresidentName = 'Sarah Wilson';
-  }
-  
+  // ABYIP Structure - Based on the template with centers loop like CBYDP
   const result = {
     logo: payload?.skProfile?.logo || '',
     barangay: payload?.skProfile?.barangay || '',
@@ -548,26 +403,44 @@ export function mapABYIPToTemplate(payload: any) {
     province: payload?.skProfile?.province || '',
     city: payload?.skProfile?.city || '',
     year: payload?.form?.year || '',
+    sk_federation_president: String(federationPresidentName),
+    
+    // CENTERS LOOP - Each center gets its own page like CBYDP
     centers: (payload?.form?.centers || []).map((c: any) => ({
       name: c.name || '',
       agenda: c.agenda || '',
+      center_of_participation: c.name || '',
+      
+      // Projects for this center
       projects: (c.projects || []).map((p: any) => ({
         referenceCode: p.referenceCode || '',
         ppas: p.ppas || '',
         description: p.description || '',
         expectedResult: p.expectedResult || '',
         performanceIndicator: p.performanceIndicator || '',
-        period: p.periodOfImplementation || '',
+        periodOfImplementation: p.periodOfImplementation || '',
         mooe: p?.budget?.mooe || '',
         co: p?.budget?.co || '',
         ps: p?.budget?.ps || '',
         total: p?.budget?.total || '',
-        responsible: p.personResponsible || '',
+        personResponsible: p.personResponsible || '',
       })),
+      
+      // Member rows for this center
+      member_rows: memberRows,
     })),
+    
+    // Global member rows (for second page)
     member_rows: memberRows,
-    sk_federation_president: federationPresidentName,
+    
+    // Prepared by section - ABYIP typically has Treasurer and Chairperson
+    prepared_by: {
+      secretary: String(secretaryName),
+      chairperson: String(chairpersonName),
+      treasurer: String(treasurerName),
+    },
   };
+  
   
   // FINAL VALIDATION: Ensure no undefined values make it to the template
   const finalResult = {
@@ -576,12 +449,6 @@ export function mapABYIPToTemplate(payload: any) {
     'prepared_by.secretary': String(secretaryName),
     'prepared_by.chairperson': String(chairpersonName),
     'prepared_by.treasurer': String(treasurerName),
-    // Keep nested structure as backup
-    prepared_by: {
-      secretary: String(secretaryName),
-      chairperson: String(chairpersonName),
-      treasurer: String(treasurerName),
-    },
     sk_federation_president: String(federationPresidentName),
   };
   
