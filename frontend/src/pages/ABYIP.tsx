@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createABYIP, getABYIP, updateABYIP, deleteABYIP, uploadFile, getCBYDP, getAllABYIPs, clearAllABYIPs } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
+import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
 import { exportDocxFromTemplate, mapABYIPToTemplate } from '../services/docxExport';
 
 interface ABYIPRow {
@@ -37,7 +37,7 @@ interface ABYIPForm {
   centers: ABYIPCenter[];
   skMembers: SKMember[];
   showLogoInPrint: boolean;
-  status: 'not_initiated' | 'open_for_editing' | 'pending_approval' | 'approved' | 'rejected';
+  status: 'not_initiated' | 'open_for_editing' | 'pending_kk_approval' | 'approved' | 'rejected';
   isEditingOpen: boolean;
   year: string;
   yearlyBudget: string; // Total budget for the year
@@ -45,10 +45,13 @@ interface ABYIPForm {
   initiatedAt?: Date;
   closedBy?: string;
   closedAt?: Date;
-  approvedBy?: string;
-  approvedAt?: Date;
+  kkApprovedBy?: string;
+  kkApprovedAt?: Date;
+  kkProofImage?: string;
   lastEditedBy?: string;
   lastEditedAt?: Date;
+  approvedBy?: string;
+  approvedAt?: Date;
   rejectionReason?: string;
 }
 
@@ -101,6 +104,11 @@ const ABYIP: React.FC = () => {
   const [cbydpProjects, setCbydpProjects] = useState<any[]>([]);
   const [cbydpCentersForProjects, setCbydpCentersForProjects] = useState<any[]>([]);
   const [selectedCbydpProjects, setSelectedCbydpProjects] = useState<number[]>([]);
+  const [kkProofFile, setKkProofFile] = useState<File | null>(null);
+  const [kkProofImage, setKkProofImage] = useState<string>('');
+  const [kkApprovalDate, setKkApprovalDate] = useState<string>('');
+  const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
+  const [showManagement, setShowManagement] = useState(false);
 
   // Helper functions to create mandatory centers
   const createAdministrativeServiceCenter = (): ABYIPCenter => ({
@@ -341,9 +349,45 @@ const ABYIP: React.FC = () => {
     }, 0);
   };
 
+  const calculateCenterSubtotalMOOE = (center: ABYIPCenter) => {
+    return center.projects.reduce((total, project) => {
+      return total + (parseFloat(project.budget.mooe?.replace(/,/g, '') || '0'));
+    }, 0);
+  };
+
+  const calculateCenterSubtotalCO = (center: ABYIPCenter) => {
+    return center.projects.reduce((total, project) => {
+      return total + (parseFloat(project.budget.co?.replace(/,/g, '') || '0'));
+    }, 0);
+  };
+
+  const calculateCenterSubtotalPS = (center: ABYIPCenter) => {
+    return center.projects.reduce((total, project) => {
+      return total + (parseFloat(project.budget.ps?.replace(/,/g, '') || '0'));
+    }, 0);
+  };
+
   const calculateGrandTotal = () => {
     return form.centers.reduce((total, center) => {
       return total + calculateCenterSubtotal(center);
+    }, 0);
+  };
+
+  const calculateGrandTotalMOOE = () => {
+    return form.centers.reduce((total, center) => {
+      return total + calculateCenterSubtotalMOOE(center);
+    }, 0);
+  };
+
+  const calculateGrandTotalCO = () => {
+    return form.centers.reduce((total, center) => {
+      return total + calculateCenterSubtotalCO(center);
+    }, 0);
+  };
+
+  const calculateGrandTotalPS = () => {
+    return form.centers.reduce((total, center) => {
+      return total + calculateCenterSubtotalPS(center);
     }, 0);
   };
 
@@ -352,6 +396,209 @@ const ABYIP: React.FC = () => {
     const grandTotal = calculateGrandTotal();
     return Math.abs(yearlyBudget - grandTotal) < 0.01; // Allow for small rounding differences
   };
+
+  // Close ABYIP for editing (similar to CBYDP)
+  const handleCloseEditing = async () => {
+    if (!existingABYIPId) {
+      setError('No ABYIP to close. Please save first.');
+      return;
+    }
+
+    if (!isBudgetBalanced()) {
+      setError('Cannot close ABYIP: Budget is not balanced. Total allocated must equal yearly budget.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const updatedForm = {
+        ...form,
+        isEditingOpen: false,
+        status: 'pending_kk_approval' as const,
+        closedBy: user?.name,
+        closedAt: new Date(),
+        lastEditedBy: user?.name,
+        lastEditedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await updateABYIP(existingABYIPId, updatedForm as any);
+      setForm(updatedForm);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      setError('');
+    } catch (error) {
+      console.error('Error closing ABYIP:', error);
+      setError('Failed to close ABYIP. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Open ABYIP for editing (similar to CBYDP)
+  const handleOpenABYIP = async () => {
+    if (!existingABYIPId) {
+      setError('No ABYIP to open.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const updatedForm = {
+        ...form,
+        isEditingOpen: true,
+        status: 'open_for_editing' as const,
+        lastEditedBy: user?.name,
+        lastEditedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await updateABYIP(existingABYIPId, updatedForm as any);
+      setForm(updatedForm);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      setError('');
+    } catch (error) {
+      console.error('Error opening ABYIP:', error);
+      setError('Failed to open ABYIP. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle KK Approval (similar to CBYDP)
+  const handleKKApproval = async () => {
+    if (!kkProofFile || !kkApprovalDate) {
+      setError('Please upload proof image and select approval date.');
+      return;
+    }
+
+    if (!existingABYIPId) {
+      setError('No ABYIP to approve. Please save the ABYIP first.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError('');
+      console.log('Starting KK approval process...');
+
+      // Upload the proof image
+      console.log('Uploading proof image...');
+      const imageUrl = await uploadFile(kkProofFile, `abyip-kk-proof/${existingABYIPId}`);
+      console.log('Image uploaded successfully:', imageUrl);
+
+      // Update the existing ABYIP with approval data instead of creating a new one
+      const approvedABYIPData = {
+        ...form,
+        status: 'approved',
+        kkApprovedBy: user?.name,
+        kkApprovedAt: new Date(kkApprovalDate),
+        kkProofImage: imageUrl,
+        approvedBy: user?.name,
+        approvedAt: new Date(),
+        isEditingOpen: false,
+        lastEditedBy: user?.name,
+        lastEditedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      console.log('Updating ABYIP with approval data...');
+      // Update the existing ABYIP instead of creating a new one
+      await updateABYIP(existingABYIPId, approvedABYIPData as any);
+
+      // Update the form state
+      setForm(approvedABYIPData as any);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      
+      // Close the modal and clear state
+      setShowKKApprovalModal(false);
+      setKkProofFile(null);
+      setKkProofImage('');
+      setKkApprovalDate('');
+      
+      console.log('ABYIP approved successfully!');
+    } catch (error) {
+      console.error('Error approving ABYIP with KK:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setError(`Failed to approve ABYIP: ${errorMessage}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle KK Rejection
+  const handleRejectKK = async (reason: string) => {
+    if (!existingABYIPId) {
+      setError('No ABYIP to reject.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const updatedForm = {
+        ...form,
+        status: 'rejected' as const,
+        rejectionReason: reason,
+        lastEditedBy: user?.name,
+        lastEditedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await updateABYIP(existingABYIPId, updatedForm as any);
+      setForm(updatedForm);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      setError('');
+    } catch (error) {
+      console.error('Error rejecting ABYIP:', error);
+      setError('Failed to reject ABYIP. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Reset approved ABYIP (similar to CBYDP)
+  const handleResetABYIP = async () => {
+    if (!existingABYIPId) {
+      setError('No ABYIP to reset.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError('');
+
+      // Delete the current approved ABYIP
+      if (existingABYIPId) {
+        await deleteABYIP(existingABYIPId);
+      }
+
+      // Reset form to initial state
+      const resetForm: ABYIPForm = {
+        centers: [],
+        skMembers: form.skMembers, // Keep SK members
+        showLogoInPrint: true,
+        status: 'not_initiated',
+        isEditingOpen: false,
+        year: new Date().getFullYear().toString(),
+        yearlyBudget: '',
+      };
+
+      setForm(resetForm);
+      setExistingABYIPId(null);
+      setSelectedABYIPYear('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error resetting ABYIP:', error);
+      setError('Failed to reset ABYIP. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   // Initialize mandatory centers when form is first loaded
   useEffect(() => {
@@ -551,75 +798,6 @@ const ABYIP: React.FC = () => {
     }
   };
 
-  // Reliable print using hidden iframe (same as CBYDP approach)
-  const handlePrint = () => {
-    const performPrint = () => {
-      if (!printRef.current) return;
-      const printContents = printRef.current.innerHTML;
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-
-      doc.open();
-      doc.write(`<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <base href="${window.location.origin}/" />
-    <title>ABYIP Print</title>
-    <style>
-      @page { size: 13in 8.5in; margin: 8mm; }
-      body { 
-        font-family: 'Calibri', Arial, sans-serif; 
-        font-size: 12pt; 
-        margin: 0; 
-        padding: 0;
-        background: white;
-      }
-      html, body { background: white; }
-      .print-content { width: 13in !important; min-height: 8.5in !important; padding: 18px; }
-      table { page-break-inside: auto; border-collapse: collapse; width: 100%; font-size: 9pt; }
-      th, td { border: 1px solid #000; padding: 4px; vertical-align: top; }
-      .page-content { page-break-inside: avoid; }
-      tr { page-break-inside: auto; }
-      .prepared-by-section { page-break-inside: avoid; margin-top: 1.5rem; }
-    </style>
-  </head>
-  <body>
-    <div class="print-content">${printContents}</div>
-    <script>
-      (function(){
-        function waitForImages(){
-          var imgs = Array.prototype.slice.call(document.images || []);
-          if(imgs.length === 0) return Promise.resolve();
-          return Promise.all(imgs.map(function(img){
-            return new Promise(function(res){ if(img.complete){res();} else { img.onload = img.onerror = function(){res();}; } });
-          }));
-        }
-        Promise.resolve()
-          .then(function(){ return (document.fonts && document.fonts.ready) ? document.fonts.ready : null; })
-          .then(function(){ return waitForImages(); })
-          .then(function(){ setTimeout(function(){ window.focus(); window.print(); }, 200); });
-      })();
-    <\/script>
-  </body>
-</html>`);
-      doc.close();
-
-      setTimeout(() => { try { document.body.removeChild(iframe); } catch (_) {} }, 5000);
-    };
-
-    if (!printRef.current) return;
-    performPrint();
-  };
 
   // Fetch SK members and all ABYIPs on initial load
   useEffect(() => {
@@ -642,10 +820,19 @@ const ABYIP: React.FC = () => {
         <p className="text-gray-600">Create Annual Barangay Youth Investment Program</p>
       </div>
 
-      {/* ABYIP Management Panel */}
+      {/* Unified ABYIP Management Section */}
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="text-lg font-semibold text-blue-800 mb-4">ABYIP Management</h3>
-        
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-blue-800">ABYIP Management</h3>
+          <button
+            onClick={() => setShowManagement(!showManagement)}
+            className="btn-secondary flex items-center"
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            {showManagement ? 'Hide Details' : 'Show Details'}
+          </button>
+        </div>
+
         {/* Year Selection */}
         <div className="flex items-center space-x-4 mb-4">
           <label className="text-sm font-medium text-blue-900">Select Year:</label>
@@ -666,7 +853,7 @@ const ABYIP: React.FC = () => {
             {Array.from({ length: 3 }, (_, i) => {
               const year = new Date().getFullYear() + i;
               const hasABYIP = allABYIPs.some(abyip => abyip.year === year.toString());
-  return (
+              return (
                 <option key={year} value={year.toString()}>
                   {year} {hasABYIP ? '(Created)' : '(Available)'}
                 </option>
@@ -712,71 +899,131 @@ const ABYIP: React.FC = () => {
           )}
         </div>
 
-        {/* Available ABYIPs List */}
-        {allABYIPs.length > 0 && (
-          <div className="mt-4">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">Existing ABYIPs:</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {allABYIPs.map((abyip) => (
-                <div key={abyip.id} className="bg-white border border-blue-200 rounded p-3">
-                  <div className="font-medium text-blue-700">Year: {abyip.year}</div>
-                  <div className="text-sm text-gray-600">Status: {abyip.status}</div>
-                  <div className="text-sm text-gray-600">
-                    Created: {abyip.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
-                  </div>
-                  <div className="text-sm text-gray-600">Centers: {abyip.centers?.length || 0}</div>
-                  <button
-                    onClick={() => {
-                      setSelectedABYIPYear(abyip.year);
-                      setForm(prev => ({ ...prev, year: abyip.year }));
-                      loadExistingABYIP(abyip.year);
-                    }}
-                    className="mt-2 text-xs bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded"
-                  >
-                    Load This ABYIP
-                  </button>
-                </div>
-              ))}
+
+        {/* Current ABYIP Status - Always Visible */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+          <h5 className="text-md font-semibold text-yellow-800 mb-2">Current ABYIP Status</h5>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="font-medium text-yellow-700">Year:</span>
+              <div className="text-gray-600">{form.year}</div>
+            </div>
+            <div>
+              <span className="font-medium text-yellow-700">Status:</span>
+              <div className="text-gray-600">{form.status}</div>
+            </div>
+            <div>
+              <span className="font-medium text-yellow-700">ABYIP ID:</span>
+              <div className="text-gray-600">{existingABYIPId ? existingABYIPId.substring(0, 8) + '...' : 'None'}</div>
+            </div>
+            <div>
+              <span className="font-medium text-yellow-700">Centers:</span>
+              <div className="text-gray-600">{form.centers?.length || 0}</div>
             </div>
           </div>
-        )}
-
-        {/* Import from CBYDP Button */}
-        {selectedABYIPYear && allABYIPs.some(abyip => abyip.year === selectedABYIPYear) && (
-          <div className="mt-4">
-            <button
-              onClick={openImportFromCBYDP}
-              className="btn-secondary text-sm"
-            >
-              Import from approved CBYDP
-            </button>
-          </div>
-        )}
-      </div>
-
-
-      {/* Current ABYIP Status */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-        <h3 className="text-lg font-semibold text-yellow-800 mb-2">Current ABYIP Status</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="font-medium text-yellow-700">Year:</span>
-            <div className="text-gray-600">{form.year}</div>
-          </div>
-          <div>
-            <span className="font-medium text-yellow-700">Status:</span>
-            <div className="text-gray-600">{form.status}</div>
-          </div>
-          <div>
-            <span className="font-medium text-yellow-700">ABYIP ID:</span>
-            <div className="text-gray-600">{existingABYIPId ? existingABYIPId.substring(0, 8) + '...' : 'None'}</div>
-          </div>
-          <div>
-            <span className="font-medium text-yellow-700">Centers:</span>
-            <div className="text-gray-600">{form.centers?.length || 0}</div>
-          </div>
         </div>
+
+        {/* ABYIP Status Details - Toggleable */}
+        {showManagement && (
+          <div className="space-y-4">
+            {/* ABYIP Status for Current Year */}
+            {existingABYIPId && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h5 className="font-semibold text-blue-900 mb-2">ABYIP Status for {form.year}</h5>
+                <div className="flex items-center space-x-4">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                     form.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
+                     form.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
+                     form.status === 'pending_kk_approval' ? 'bg-yellow-100 text-yellow-800' :
+                    form.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                     {form.status === 'not_initiated' ? 'Not Initiated' :
+                      form.status === 'open_for_editing' ? 'Open for Editing' :
+                      form.status === 'pending_kk_approval' ? 'Pending KK Approval' :
+                     form.status === 'approved' ? 'Approved' : 'Rejected'}
+                  </span>
+                  {form.initiatedBy && (
+                    <span className="text-sm text-blue-700">
+                      Initiated by: {form.initiatedBy}
+                    </span>
+                  )}
+                  {form.closedBy && (
+                    <span className="text-sm text-blue-700">
+                      Closed by: {form.closedBy}
+                    </span>
+                  )}
+                  {form.kkApprovedBy && (
+                    <span className="text-sm text-green-700">
+                      KK Approved by: {form.kkApprovedBy}
+                    </span>
+                  )}
+                  {form.lastEditedBy && (
+                    <span className="text-sm text-blue-700">
+                      Last edited by: {form.lastEditedBy}
+                    </span>
+                  )}
+                  {form.status === 'approved' && form.approvedBy && (
+                    <span className="text-sm text-green-700">
+                      Approved by: {form.approvedBy}
+                    </span>
+                  )}
+                  {form.status === 'approved' && form.kkProofImage && (
+                    <div className="mt-2">
+                      <span className="text-sm text-green-700">KK Proof Image:</span>
+                      <div className="mt-1">
+                        <img 
+                          src={form.kkProofImage} 
+                          alt="KK Approval Proof" 
+                          className="w-24 h-24 object-cover rounded border"
+                          style={{ maxWidth: '96px', maxHeight: '96px' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {form.status === 'rejected' && form.rejectionReason && (
+                    <span className="text-sm text-red-700">
+                      Reason: {form.rejectionReason}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+
+            {/* Available ABYIPs List */}
+            {allABYIPs.length > 0 && (
+              <div>
+                <h5 className="text-sm font-medium text-blue-800 mb-2">Existing ABYIPs:</h5>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {allABYIPs.map((abyip) => (
+                    <div key={abyip.id} className="bg-white border border-blue-200 rounded p-3">
+                      <div className="font-medium text-blue-700">Year: {abyip.year}</div>
+                      <div className="text-sm text-gray-600">Status: {abyip.status}</div>
+                      <div className="text-sm text-gray-600">
+                        Created: {abyip.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                      </div>
+                      <div className="text-sm text-gray-600">Centers: {abyip.centers?.length || 0}</div>
+                      <button
+                        onClick={() => {
+                          setSelectedABYIPYear(abyip.year);
+                          setForm(prev => ({ ...prev, year: abyip.year }));
+                          loadExistingABYIP(abyip.year);
+                        }}
+                        className="mt-2 text-xs bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded"
+                      >
+                        Load This ABYIP
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+
 
       {/* Status Messages */}
       {saved && (
@@ -814,7 +1061,6 @@ const ABYIP: React.FC = () => {
                     />
                     <div>
                       <div className="font-medium">{center.name || `Center ${idx + 1}`}</div>
-                      <div className="text-sm text-gray-600">{center.agenda}</div>
                       <div className="text-xs text-gray-500">{(center.projects || []).length} projects</div>
                     </div>
                   </label>
@@ -829,50 +1075,6 @@ const ABYIP: React.FC = () => {
         </div>
       )}
 
-      {/* ABYIP Status */}
-      {existingABYIPId && (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex justify-between items-center">
-        <div>
-              <h3 className="font-semibold text-blue-900">ABYIP Status for {form.year}</h3>
-              <div className="flex items-center space-x-4 mt-2">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                   form.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
-                   form.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
-                   form.status === 'pending_approval' ? 'bg-yellow-100 text-yellow-800' :
-                  form.status === 'approved' ? 'bg-green-100 text-green-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                   {form.status === 'not_initiated' ? 'Not Initiated' :
-                    form.status === 'open_for_editing' ? 'Open for Editing' :
-                    form.status === 'pending_approval' ? 'Pending Approval' :
-                   form.status === 'approved' ? 'Approved' : 'Rejected'}
-                </span>
-                {form.initiatedBy && (
-                  <span className="text-sm text-blue-700">
-                    Initiated by: {form.initiatedBy}
-                  </span>
-                )}
-                {form.lastEditedBy && (
-                  <span className="text-sm text-blue-700">
-                    Last edited by: {form.lastEditedBy}
-                  </span>
-                )}
-                {form.status === 'approved' && form.approvedBy && (
-                  <span className="text-sm text-green-700">
-                    Approved by: {form.approvedBy}
-                  </span>
-                )}
-                {form.status === 'rejected' && form.rejectionReason && (
-                  <span className="text-sm text-red-700">
-                    Reason: {form.rejectionReason}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Action Buttons */}
       <div className="mb-6 flex justify-between items-center">
@@ -947,21 +1149,97 @@ const ABYIP: React.FC = () => {
             Refresh
           </button>
 
-          {/* Debug Button */}
-          <button
-            onClick={() => {
-              console.log('Current form state:', form);
-              console.log('Centers:', form.centers);
-              console.log('Existing ABYIP ID:', existingABYIPId);
-              console.log('All ABYIPs:', allABYIPs);
-              console.log('Selected Year:', selectedABYIPYear);
-              console.log('Form Status:', form.status);
-              console.log('Is Editing Open:', form.isEditingOpen);
-            }}
-            className="btn-secondary flex items-center"
-          >
-            Debug
-          </button>
+          {/* Close Editing Period - Only for Chairperson when open for editing */}
+          {user?.role === 'chairperson' && form.status === 'open_for_editing' && (
+            <button
+              onClick={handleCloseEditing}
+              disabled={saving || !isBudgetBalanced()}
+              className="btn-secondary flex items-center"
+            >
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                  Closing...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  Close Editing Period
+                </>
+              )}
+            </button>
+          )}
+
+          {/* KK Approval Actions - Only for Chairperson when pending KK approval */}
+          {user?.role === 'chairperson' && form.status === 'pending_kk_approval' && (
+            <>
+              <button
+                onClick={() => setShowKKApprovalModal(true)}
+                disabled={saving}
+                className="btn-primary flex items-center bg-green-600 hover:bg-green-700"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Approving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Approve with KK
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  const reason = prompt('Please provide a reason for rejection:');
+                  if (reason) {
+                    handleRejectKK(reason);
+                  }
+                }}
+                disabled={saving}
+                className="btn-danger flex items-center"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Rejecting...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Reject
+                  </>
+                )}
+              </button>
+            </>
+          )}
+
+          {/* Reset ABYIP Button - Only for Chairperson when approved */}
+          {user?.role === 'chairperson' && form.status === 'approved' && (
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to reset this approved ABYIP? This will delete the current one and allow you to create a new one.')) {
+                  handleResetABYIP();
+                }
+              }}
+              disabled={saving}
+              className="btn-danger flex items-center"
+            >
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Reset ABYIP
+                </>
+              )}
+            </button>
+          )}
+
 
           {/* Reset All ABYIPs Button */}
           <button
@@ -1011,14 +1289,7 @@ const ABYIP: React.FC = () => {
             Reset All ABYIPs
           </button>
 
-          {/* Show All ABYIPs Button */}
-          <button
-            onClick={loadAllABYIPs}
-            className="btn-secondary flex items-center"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Show All ABYIPs
-        </button>
+
       </div>
 
         <div className="flex items-center space-x-4">
@@ -1041,13 +1312,6 @@ const ABYIP: React.FC = () => {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Print Preview</h3>
               <div className="flex space-x-3">
-                <button
-                  onClick={handlePrint}
-                  className="btn-primary flex items-center"
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Print
-                </button>
                 <button
                   onClick={async () => {
                     try {
@@ -1111,7 +1375,15 @@ const ABYIP: React.FC = () => {
               </div>
             </div>
             
-            <div ref={printRef} className="print-content bg-white p-8" style={{ width: '13in', minHeight: '8.5in', display: 'block', visibility: 'visible', fontFamily: "'Times New Roman', serif" }}>
+            <div ref={printRef} className="print-content bg-white p-8" style={{ 
+              width: '100%', 
+              maxWidth: '100%',
+              height: '600px',
+              overflow: 'auto',
+              display: 'block', 
+              visibility: 'visible', 
+              fontFamily: "'Times New Roman', serif" 
+            }}>
               {/* ABYIP Print Content - Separate page for each center like CBYDP */}
               {form.centers.map((center, ci) => {
                 // Calculate how many rows can fit per page (approximately 2 rows per page to ensure "Prepared by" fits)
@@ -1125,7 +1397,7 @@ const ABYIP: React.FC = () => {
                   const pageRows = center.projects.slice(startRow, endRow);
                  
                  return (
-                   <div key={`${ci}-${pageNum}`} style={{ pageBreakAfter: 'always' }}>
+                   <div key={`${ci}-${pageNum}`}>
                      {/* Header - repeated on every page - Matching CBYDP style exactly */}
                      <div className="mb-3" style={{ position: 'relative' }}>
                        {/* Annex B - Top Right */}
@@ -1193,13 +1465,6 @@ const ABYIP: React.FC = () => {
                          </span>
                        </div>
 
-                       {/* Agenda Statement */}
-                       <div className="text-xs mb-2">
-                         <div className="mb-1">Agenda Statement:</div>
-                         <div style={{ borderBottom: '1px solid #000', minHeight: '0.25in' }}>
-                           {center.agenda || '\u00A0'}
-                         </div>
-                       </div>
                      </div>
                      
                      {/* Page indicator for multi-page centers - Matching CBYDP format */}
@@ -1248,7 +1513,7 @@ const ABYIP: React.FC = () => {
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.mooe && `₱${formatNumber(project.budget.mooe)}`}</td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.co && `₱${formatNumber(project.budget.co)}`}</td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.ps && `₱${formatNumber(project.budget.ps)}`}</td>
-                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.total && `₱${formatNumber(project.budget.total)}`}</td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right' }}>₱{formatNumber(calculateProjectTotal(project.budget).toString())}</td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.personResponsible}</td>
                            </tr>
                          )) : Array.from({ length: 2 }).map((_, pi) => (
@@ -1266,11 +1531,55 @@ const ABYIP: React.FC = () => {
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', height: '0.5in' }}></td>
                            </tr>
                          ))}
+                         
+                         {/* Subtotal Row for this center */}
+                         <tr>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', backgroundColor: '#f3f4f6' }} colSpan={6}>
+                             SUBTOTAL
+                           </td>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#f3f4f6' }}>
+                             ₱{formatNumber(calculateCenterSubtotalMOOE(center).toString())}
+                           </td>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#f3f4f6' }}>
+                             ₱{formatNumber(calculateCenterSubtotalCO(center).toString())}
+                           </td>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#f3f4f6' }}>
+                             ₱{formatNumber(calculateCenterSubtotalPS(center).toString())}
+                           </td>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#f3f4f6' }}>
+                             ₱{formatNumber(calculateCenterSubtotal(center).toString())}
+                           </td>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#f3f4f6' }}></td>
+                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#f3f4f6' }}></td>
+                         </tr>
+                         
+                         {/* Grand Total Row - only on the last center */}
+                         {ci === form.centers.length - 1 && (
+                           <tr>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', backgroundColor: '#dbeafe' }} colSpan={6}>
+                               GRAND TOTAL
+                             </td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#dbeafe' }}>
+                               ₱{formatNumber(calculateGrandTotalMOOE().toString())}
+                             </td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#dbeafe' }}>
+                               ₱{formatNumber(calculateGrandTotalCO().toString())}
+                             </td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#dbeafe' }}>
+                               ₱{formatNumber(calculateGrandTotalPS().toString())}
+                             </td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#dbeafe' }}>
+                               ₱{formatNumber(calculateGrandTotal().toString())}
+                             </td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#dbeafe' }}></td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#dbeafe' }}></td>
+                           </tr>
+                         )}
                        </tbody>
                      </table>
 
                      {/* Prepared by - ABYIP format with Secretary */}
-                     <div style={{ marginTop: '12px', pageBreakInside: 'avoid' }}>
+                     <div style={{ marginTop: '12px' }}>
                        <div style={{ textAlign: 'center', fontSize: '9pt', fontWeight: '600', marginBottom: '8px' }}>Prepared by:</div>
                        <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                          <div style={{ width: '2.5in' }}>
@@ -1310,19 +1619,20 @@ const ABYIP: React.FC = () => {
             </div>
           )}
 
-          {form.status === 'open_for_editing' && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2" />
-              ABYIP for {form.year} is open for editing. All SK members can add and edit projects.
-            </div>
-          )}
+            {form.status === 'open_for_editing' && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg flex items-center">
+                <CheckCircle className="h-5 w-5 mr-2" />
+                ABYIP for {form.year} is open for editing. All SK members can add and edit projects.
+              </div>
+            )}
 
-          {form.status === 'pending_approval' && (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg flex items-center">
-              <AlertCircle className="h-5 w-5 mr-2" />
-              ABYIP for {form.year} is pending approval.
-            </div>
-          )}
+            {form.status === 'pending_kk_approval' && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg flex items-center">
+                <AlertCircle className="h-5 w-5 mr-2" />
+                ABYIP is pending Katipunan ng Kabataan approval. The SK Chairperson must upload proof of KK approval.
+              </div>
+            )}
+
 
           {form.status === 'approved' && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center">
@@ -1459,50 +1769,6 @@ const ABYIP: React.FC = () => {
                         }}
                         className="input-field"
                         placeholder="e.g., Health, Sports, Education"
-                        required
-                        disabled={form.status === 'not_initiated' || !form.isEditingOpen || form.status === 'approved'}
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label">Agenda Statement</label>
-                      <textarea
-                        value={center.agenda}
-                        onChange={async (e) => {
-                          const updatedCenters = form.centers.map((c, i) =>
-                            i === centerIdx ? { ...c, agenda: e.target.value } : c
-                          );
-                          const updatedForm = { ...form, centers: updatedCenters };
-                          setForm(updatedForm);
-                          
-                          // Auto-save if ABYIP already exists (with debouncing)
-                          if (existingABYIPId) {
-                            // Clear any existing timeout
-                            if ((window as any).centerAgendaTimeout) {
-                              clearTimeout((window as any).centerAgendaTimeout);
-                            }
-                            
-                            // Set new timeout for auto-save
-                            (window as any).centerAgendaTimeout = setTimeout(async () => {
-                              try {
-                                const abyipData = {
-                                  ...updatedForm,
-                                  lastEditedBy: user?.name,
-                                  lastEditedAt: new Date(),
-                                  updatedAt: new Date()
-                                };
-                                await updateABYIP(existingABYIPId, abyipData as any);
-                                setSaved(true);
-                                setTimeout(() => setSaved(false), 3000);
-                              } catch (error) {
-                                console.error('Error auto-saving center agenda:', error);
-                                setError('Failed to auto-save. Please click Save ABYIP manually.');
-                              }
-                            }, 2000); // Wait 2 seconds after user stops typing
-                          }
-                        }}
-                        className="input-field"
-                        rows={3}
-                        placeholder="Describe the agenda for this center"
                         required
                         disabled={form.status === 'not_initiated' || !form.isEditingOpen || form.status === 'approved'}
                       />
@@ -1780,28 +2046,9 @@ const ABYIP: React.FC = () => {
                                 />
                               </td>
                               <td className="border border-gray-300 p-2">
-                                <input
-                                  type="text"
-                                  value={handleNumberDisplay(project.budget.total)}
-                                  onChange={async (e) => {
-                                    handleNumberInput(e.target.value, async (value) => {
-                                      const updatedCenters = form.centers.map((c, i) =>
-                                        i === centerIdx ? {
-                                          ...c,
-                                          projects: c.projects.map((p, j) =>
-                                            j === projectIdx ? { ...p, budget: { ...p.budget, total: value } } : p
-                                          )
-                                        } : c
-                                      );
-                                      const updatedForm = { ...form, centers: updatedCenters };
-                                      setForm(updatedForm);
-                                      await autoSaveProjectChange(updatedForm);
-                                    });
-                                  }}
-                                  className="w-full border-none focus:ring-0 text-xs font-semibold"
-                                  placeholder="Total"
-                                  disabled={form.status === 'not_initiated' || !form.isEditingOpen || form.status === 'approved'}
-                                />
+                                <div className="w-full text-xs font-semibold text-right bg-gray-50 py-1 px-2">
+                                  ₱{formatNumber(calculateProjectTotal(project.budget).toString())}
+                                </div>
                               </td>
                               <td className="border border-gray-300 p-2">
                                 <input
@@ -1864,6 +2111,50 @@ const ABYIP: React.FC = () => {
                               </td>
                             </tr>
                           ))}
+                          
+                          {/* Subtotal Row for this center */}
+                          <tr className="bg-gray-100">
+                            <td className="border border-gray-300 p-2 font-semibold text-sm" colSpan={6}>
+                              SUBTOTAL
+                            </td>
+                            <td className="border border-gray-300 p-2 font-semibold text-sm text-right">
+                              ₱{formatNumber(calculateCenterSubtotalMOOE(center).toString())}
+                            </td>
+                            <td className="border border-gray-300 p-2 font-semibold text-sm text-right">
+                              ₱{formatNumber(calculateCenterSubtotalCO(center).toString())}
+                            </td>
+                            <td className="border border-gray-300 p-2 font-semibold text-sm text-right">
+                              ₱{formatNumber(calculateCenterSubtotalPS(center).toString())}
+                            </td>
+                            <td className="border border-gray-300 p-2 font-semibold text-sm text-right">
+                              ₱{formatNumber(calculateCenterSubtotal(center).toString())}
+                            </td>
+                            <td className="border border-gray-300 p-2"></td>
+                            <td className="border border-gray-300 p-2"></td>
+                          </tr>
+                          
+                          {/* Grand Total Row - only on the last center */}
+                          {centerIdx === form.centers.length - 1 && (
+                            <tr className="bg-blue-100">
+                              <td className="border border-gray-300 p-2 font-bold text-sm" colSpan={6}>
+                                GRAND TOTAL
+                              </td>
+                              <td className="border border-gray-300 p-2 font-bold text-sm text-right">
+                                ₱{formatNumber(calculateGrandTotalMOOE().toString())}
+                              </td>
+                              <td className="border border-gray-300 p-2 font-bold text-sm text-right">
+                                ₱{formatNumber(calculateGrandTotalCO().toString())}
+                              </td>
+                              <td className="border border-gray-300 p-2 font-bold text-sm text-right">
+                                ₱{formatNumber(calculateGrandTotalPS().toString())}
+                              </td>
+                              <td className="border border-gray-300 p-2 font-bold text-sm text-right">
+                                ₱{formatNumber(calculateGrandTotal().toString())}
+                              </td>
+                              <td className="border border-gray-300 p-2"></td>
+                              <td className="border border-gray-300 p-2"></td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1942,9 +2233,6 @@ const ABYIP: React.FC = () => {
                       <h4 className="font-semibold text-gray-800 text-sm">
                         {center.name}
                       </h4>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {center.agenda}
-                      </p>
                     </div>
                     
                     {/* Projects in this center */}
@@ -2031,6 +2319,99 @@ const ABYIP: React.FC = () => {
                 className="btn-primary"
               >
                 Add Selected Projects ({selectedCbydpProjects.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KK Approval Modal */}
+      {showKKApprovalModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Katipunan ng Kabataan Approval</h3>
+            <p className="text-gray-600 mb-4">
+              Upload proof of KK approval for this ABYIP. This will finalize the approval process.
+            </p>
+            
+            {/* Debug Information */}
+            <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
+              <strong>Debug Info:</strong><br/>
+              ABYIP ID: {existingABYIPId || 'None'}<br/>
+              Current Status: {form.status}<br/>
+              User Role: {user?.role}<br/>
+              File Selected: {kkProofFile ? 'Yes' : 'No'}<br/>
+              Date Selected: {kkApprovalDate || 'No'}<br/>
+              Can Approve: {user?.role === 'chairperson' && form.status === 'pending_kk_approval' ? 'Yes' : 'No'}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                KK Approval Proof Image
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    console.log('File selected:', file.name, file.size, file.type);
+                    setKkProofFile(file);
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                      setKkProofImage(e.target?.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {kkProofFile && (
+                <div className="mt-2 text-sm text-green-600">
+                  ✓ File selected: {kkProofFile.name} ({(kkProofFile.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+              )}
+              {kkProofImage && (
+                <div className="mt-2">
+                  <img
+                    src={kkProofImage}
+                    alt="KK Proof Preview"
+                    className="w-32 h-32 object-cover rounded border"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                KK Approval Date
+              </label>
+              <input
+                type="date"
+                value={kkApprovalDate}
+                onChange={(e) => setKkApprovalDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={handleKKApproval}
+                disabled={!kkProofFile || !kkApprovalDate || saving}
+                className="btn-primary flex-1"
+              >
+                {saving ? 'Approving...' : 'Approve with KK'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowKKApprovalModal(false);
+                  setKkProofImage('');
+                  setKkProofFile(null);
+                  setKkApprovalDate('');
+                }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
               </button>
             </div>
           </div>

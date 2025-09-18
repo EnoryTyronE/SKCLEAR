@@ -240,20 +240,7 @@ export function mapCBYDPToTemplate(payload: any) {
   let treasurerName = memberNames.treasurer?.name || 'Treasurer Name';
   let federationPresidentName = memberNames.federationPresident || 'Federation President Name';
   
-  // TEMPORARY DEBUG: Force specific names to test template
-  // Remove this after confirming the template works
-  if (secretaryName === 'Secretary Name' || !secretaryName || secretaryName === 'undefined') {
-    secretaryName = 'John Doe';
-  }
-  if (chairpersonName === 'Chairperson Name' || !chairpersonName || chairpersonName === 'undefined') {
-    chairpersonName = 'Jane Smith';
-  }
-  if (treasurerName === 'Treasurer Name' || !treasurerName || treasurerName === 'undefined') {
-    treasurerName = 'Mike Johnson';
-  }
-  if (federationPresidentName === 'Federation President Name' || !federationPresidentName || federationPresidentName === 'undefined') {
-    federationPresidentName = 'Sarah Wilson';
-  }
+  // Use actual member names from the data
   
   console.log('Direct name assignments:');
   console.log('- Secretary:', secretaryName);
@@ -315,28 +302,28 @@ export function mapCBYDPToTemplate(payload: any) {
   const finalResult = {
     ...result,
     // Flattened structure for template compatibility
-    'prepared_by.secretary': String(result.prepared_by.secretary || 'John Doe'),
-    'prepared_by.chairperson': String(result.prepared_by.chairperson || 'Jane Smith'),
-    'prepared_by.treasurer': String(result.prepared_by.treasurer || 'Mike Johnson'),
+    'prepared_by.secretary': String(result.prepared_by.secretary || ''),
+    'prepared_by.chairperson': String(result.prepared_by.chairperson || ''),
+    'prepared_by.treasurer': String(result.prepared_by.treasurer || ''),
     // Keep nested structure as backup
     prepared_by: {
-      secretary: String(result.prepared_by.secretary || 'John Doe'),
-      chairperson: String(result.prepared_by.chairperson || 'Jane Smith'),
-      treasurer: String(result.prepared_by.treasurer || 'Mike Johnson'),
+      secretary: String(result.prepared_by.secretary || ''),
+      chairperson: String(result.prepared_by.chairperson || ''),
+      treasurer: String(result.prepared_by.treasurer || ''),
     },
-    sk_federation_president: String(result.sk_federation_president || 'Sarah Wilson'),
+    sk_federation_president: String(result.sk_federation_president || ''),
     
     // FLATTENED MEMBER APPROACH - Individual member fields (updated for flattened structure)
-    member1: memberRows[0]?.['left.name'] || 'Member 1',
-    member2: memberRows[0]?.['right.name'] || 'Member 2',
-    member3: memberRows[1]?.['left.name'] || 'Member 3',
-    member4: memberRows[1]?.['right.name'] || 'Member 4',
-    member5: memberRows[2]?.['left.name'] || 'Member 5',
-    member6: memberRows[2]?.['right.name'] || 'Member 6',
-    member7: memberRows[3]?.['left.name'] || 'Member 7',
-    member8: memberRows[3]?.['right.name'] || 'Member 8',
-    member9: memberRows[4]?.['left.name'] || 'Member 9',
-    member10: memberRows[4]?.['right.name'] || 'Member 10',
+    member1: memberRows[0]?.['left.name'] || '',
+    member2: memberRows[0]?.['right.name'] || '',
+    member3: memberRows[1]?.['left.name'] || '',
+    member4: memberRows[1]?.['right.name'] || '',
+    member5: memberRows[2]?.['left.name'] || '',
+    member6: memberRows[2]?.['right.name'] || '',
+    member7: memberRows[3]?.['left.name'] || '',
+    member8: memberRows[3]?.['right.name'] || '',
+    member9: memberRows[4]?.['left.name'] || '',
+    member10: memberRows[4]?.['right.name'] || '',
   };
   
   console.log('Final mapped data:', finalResult);
@@ -414,7 +401,10 @@ export function mapABYIPToTemplate(payload: any) {
     sk_federation_president: String(federationPresidentName),
     
     // CENTERS LOOP - Each center gets its own page like CBYDP
-    centers: (payload?.form?.centers || []).map((c: any) => ({
+    centers: (payload?.form?.centers || []).map((c: any, index: number, array: any[]) => {
+      const isLastCenter = index === array.length - 1;
+      
+      return {
       name: c.name || '',
       agenda: c.agenda || '',
       center_of_participation: c.name || '',
@@ -430,16 +420,86 @@ export function mapABYIPToTemplate(payload: any) {
         mooe: formatNumberForExport(p?.budget?.mooe || ''),
         co: formatNumberForExport(p?.budget?.co || ''),
         ps: formatNumberForExport(p?.budget?.ps || ''),
-        total: formatNumberForExport(p?.budget?.total || ''),
+        total: formatNumberForExport(
+          (parseFloat(p?.budget?.mooe?.replace(/,/g, '') || '0') +
+           parseFloat(p?.budget?.co?.replace(/,/g, '') || '0') +
+           parseFloat(p?.budget?.ps?.replace(/,/g, '') || '0')).toString()
+        ),
         personResponsible: p.personResponsible || '',
       })),
       
+      // Center subtotal calculations
+      centerSubtotal: formatNumberForExport(
+        (c.projects || []).reduce((sum: number, p: any) => {
+          const mooe = parseFloat(p?.budget?.mooe?.replace(/,/g, '') || '0');
+          const co = parseFloat(p?.budget?.co?.replace(/,/g, '') || '0');
+          const ps = parseFloat(p?.budget?.ps?.replace(/,/g, '') || '0');
+          return sum + mooe + co + ps;
+        }, 0)
+      ),
+      centerSubtotalMOOE: formatNumberForExport(
+        (c.projects || []).reduce((sum: number, p: any) => {
+          return sum + parseFloat(p?.budget?.mooe?.replace(/,/g, '') || '0');
+        }, 0)
+      ),
+      centerSubtotalCO: formatNumberForExport(
+        (c.projects || []).reduce((sum: number, p: any) => {
+          return sum + parseFloat(p?.budget?.co?.replace(/,/g, '') || '0');
+        }, 0)
+      ),
+      centerSubtotalPS: formatNumberForExport(
+        (c.projects || []).reduce((sum: number, p: any) => {
+          return sum + parseFloat(p?.budget?.ps?.replace(/,/g, '') || '0');
+        }, 0)
+      ),
+      
       // Member rows for this center
       member_rows: memberRows,
-    })),
+      
+      // Flag to indicate if this is the last center (for conditional grand total row)
+      isLastCenter: isLastCenter,
+      
+      // Grand totals - only for the last center
+      ...(isLastCenter && {
+        grandTotal: formatNumberForExport(
+          (payload?.form?.centers || []).reduce((totalSum: number, center: any) => {
+            return totalSum + (center.projects || []).reduce((centerSum: number, p: any) => {
+              const mooe = parseFloat(p?.budget?.mooe?.replace(/,/g, '') || '0');
+              const co = parseFloat(p?.budget?.co?.replace(/,/g, '') || '0');
+              const ps = parseFloat(p?.budget?.ps?.replace(/,/g, '') || '0');
+              return centerSum + mooe + co + ps;
+            }, 0);
+          }, 0)
+        ),
+        grandTotalMOOE: formatNumberForExport(
+          (payload?.form?.centers || []).reduce((totalSum: number, center: any) => {
+            return totalSum + (center.projects || []).reduce((centerSum: number, p: any) => {
+              return centerSum + parseFloat(p?.budget?.mooe?.replace(/,/g, '') || '0');
+            }, 0);
+          }, 0)
+        ),
+        grandTotalCO: formatNumberForExport(
+          (payload?.form?.centers || []).reduce((totalSum: number, center: any) => {
+            return totalSum + (center.projects || []).reduce((centerSum: number, p: any) => {
+              return centerSum + parseFloat(p?.budget?.co?.replace(/,/g, '') || '0');
+            }, 0);
+          }, 0)
+        ),
+        grandTotalPS: formatNumberForExport(
+          (payload?.form?.centers || []).reduce((totalSum: number, center: any) => {
+            return totalSum + (center.projects || []).reduce((centerSum: number, p: any) => {
+              return centerSum + parseFloat(p?.budget?.ps?.replace(/,/g, '') || '0');
+            }, 0);
+          }, 0)
+        ),
+      }),
+    };
+    }),
     
     // Global member rows (for second page)
     member_rows: memberRows,
+    
+    // Grand totals are now only included in the last center
     
     // Prepared by section - ABYIP typically has Treasurer and Chairperson
     prepared_by: {
