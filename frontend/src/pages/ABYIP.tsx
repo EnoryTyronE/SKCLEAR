@@ -4,6 +4,7 @@ import { createABYIP, getABYIP, updateABYIP, deleteABYIP, uploadFile, getCBYDP, 
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
+import { exportDocxFromTemplate, mapABYIPToTemplate } from '../services/docxExport';
 
 interface ABYIPRow {
   referenceCode: string;
@@ -781,8 +782,33 @@ const ABYIP: React.FC = () => {
                   Print
                 </button>
                 <button
-                  onClick={() => {
-                    // Export to Word logic here
+                  onClick={async () => {
+                    try {
+                      console.log('ABYIP Form data before export:', form);
+                      console.log('ABYIP SK Profile data:', skProfile);
+                      console.log('ABYIP Current user:', user);
+                      
+                      // Create comprehensive payload with multiple data sources
+                      const payload = {
+                        form,
+                        skProfile,
+                        user,
+                        // Add any additional context that might help
+                        timestamp: new Date().toISOString(),
+                        exportType: 'ABYIP'
+                      };
+                      
+                      const data = mapABYIPToTemplate(payload);
+                      console.log('ABYIP Mapped data for export:', data);
+                      await exportDocxFromTemplate({
+                        templatePath: '/templates/abyip_template.docx',
+                        data,
+                        outputFileName: `ABYIP_${skProfile?.barangay || 'Document'}_${form.year || '2024'}`,
+                      });
+                    } catch (e) {
+                      console.error('ABYIP template export failed', e);
+                      alert('Failed to export ABYIP Word document from template.');
+                    }
                   }}
                   className="btn-secondary flex items-center"
                 >

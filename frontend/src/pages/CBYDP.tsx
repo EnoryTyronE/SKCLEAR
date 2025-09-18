@@ -3,10 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP, uploadFile } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
-import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
-import Docxtemplater from 'docxtemplater';
-import PizZip from 'pizzip';
+import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
+import { exportDocxFromTemplate, mapCBYDPToTemplate, testTemplateExport, inspectTemplate } from '../services/docxExport';
 
 interface CBYDPRow {
   concern: string;
@@ -161,20 +159,31 @@ const CBYDP: React.FC = () => {
 
   const loadSKMembers = async () => {
     try {
+      console.log('Loading SK members from database...');
       const querySnapshot = await getDocs(collection(db, 'users'));
+      console.log('Query snapshot size:', querySnapshot.size);
+      
       const members: SKMember[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
+        console.log('User document:', doc.id, data);
         if (data.isActive !== false) {
-          members.push({
+          const member = {
             name: data.name || '',
             position: data.role === 'chairperson' ? 'SK Chairperson' :
                      data.role === 'secretary' ? 'SK Secretary' :
                      data.role === 'treasurer' ? 'SK Treasurer' : 'SK Member'
-          });
+          };
+          console.log('Adding member:', member);
+          members.push(member);
         }
       });
-      setForm(prev => ({ ...prev, skMembers: members }));
+      console.log('Final loaded SK members:', members);
+      setForm(prev => {
+        const updatedForm = { ...prev, skMembers: members };
+        console.log('Updated form with SK members:', updatedForm);
+        return updatedForm;
+      });
     } catch (error) {
       console.error('Error loading SK members:', error);
     }
@@ -584,16 +593,30 @@ const CBYDP: React.FC = () => {
         i === centerIdx
           ? {
               ...center,
-              projects: center.projects.map((project, j) =>
-                j === projectIdx
-                  ? {
-                      ...project,
-                      programs: (project.programs || []).map((program, k) =>
+              projects: center.projects.map((project, j) => {
+                if (j === projectIdx) {
+                  const updatedPrograms = (project.programs || []).map((program, k) =>
                         k === programIdx ? value : program
-                      ),
-                    }
-                  : project
-              ),
+                  );
+                  
+                  // Update ppas field to combine all PPAs
+                  const programs = updatedPrograms.filter(p => p.trim());
+                  const projectItems = (project.projects || []).filter(p => p.trim());
+                  const actions = (project.actions || []).filter(p => p.trim());
+                  
+                  const ppasArray = [];
+                  if (programs.length > 0) ppasArray.push(`Programs: ${programs.join(', ')}`);
+                  if (projectItems.length > 0) ppasArray.push(`Projects: ${projectItems.join(', ')}`);
+                  if (actions.length > 0) ppasArray.push(`Actions: ${actions.join(', ')}`);
+                  
+                  return {
+                    ...project,
+                    programs: updatedPrograms,
+                    ppas: ppasArray.join(' | '),
+                  };
+                }
+                return project;
+              }),
             }
           : center
       ),
@@ -715,16 +738,30 @@ const CBYDP: React.FC = () => {
         i === centerIdx
           ? {
               ...center,
-              projects: center.projects.map((project, j) =>
-                j === projectIdx
-                  ? {
-                      ...project,
-                      projects: (project.projects || []).map((projectItem, k) =>
+              projects: center.projects.map((project, j) => {
+                if (j === projectIdx) {
+                  const updatedProjectItems = (project.projects || []).map((projectItem, k) =>
                         k === projectItemIdx ? value : projectItem
-                      ),
-                    }
-                  : project
-              ),
+                  );
+                  
+                  // Update ppas field to combine all PPAs
+                  const programs = (project.programs || []).filter(p => p.trim());
+                  const projectItems = updatedProjectItems.filter(p => p.trim());
+                  const actions = (project.actions || []).filter(p => p.trim());
+                  
+                  const ppasArray = [];
+                  if (programs.length > 0) ppasArray.push(`Programs: ${programs.join(', ')}`);
+                  if (projectItems.length > 0) ppasArray.push(`Projects: ${projectItems.join(', ')}`);
+                  if (actions.length > 0) ppasArray.push(`Actions: ${actions.join(', ')}`);
+                  
+                  return {
+                    ...project,
+                    projects: updatedProjectItems,
+                    ppas: ppasArray.join(' | '),
+                  };
+                }
+                return project;
+              }),
             }
           : center
       ),
@@ -846,16 +883,30 @@ const CBYDP: React.FC = () => {
         i === centerIdx
           ? {
               ...center,
-              projects: center.projects.map((project, j) =>
-                j === projectIdx
-                  ? {
-                      ...project,
-                      actions: (project.actions || []).map((action, k) =>
+              projects: center.projects.map((project, j) => {
+                if (j === projectIdx) {
+                  const updatedActions = (project.actions || []).map((action, k) =>
                         k === actionIdx ? value : action
-                      ),
-                    }
-                  : project
-              ),
+                  );
+                  
+                  // Update ppas field to combine all PPAs
+                  const programs = (project.programs || []).filter(p => p.trim());
+                  const projectItems = (project.projects || []).filter(p => p.trim());
+                  const actions = updatedActions.filter(p => p.trim());
+                  
+                  const ppasArray = [];
+                  if (programs.length > 0) ppasArray.push(`Programs: ${programs.join(', ')}`);
+                  if (projectItems.length > 0) ppasArray.push(`Projects: ${projectItems.join(', ')}`);
+                  if (actions.length > 0) ppasArray.push(`Actions: ${actions.join(', ')}`);
+                  
+                  return {
+                    ...project,
+                    actions: updatedActions,
+                    ppas: ppasArray.join(' | '),
+                  };
+                }
+                return project;
+              }),
             }
           : center
       ),
@@ -953,48 +1004,6 @@ const CBYDP: React.FC = () => {
 
 
 
-  const handlePrint = async () => {
-    try {
-      // Use the exact same approach as Word export - generate docx from template
-      const data = mapCBYDPToTemplate({ form, skProfile });
-      
-      // Load the template
-      const response = await fetch('/templates/cbydp_template.docx');
-      const content = await response.arrayBuffer();
-      
-      // Generate docx using Docxtemplater
-      const zip = new PizZip(content);
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        delimiters: { start: '[[', end: ']]' },
-      });
-      
-      doc.setData(data);
-      doc.render();
-      
-      // Get the generated docx as blob
-      const docxBlob = doc.getZip().generate({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      });
-      
-      // Open the docx in a new window for preview
-      const docxUrl = URL.createObjectURL(docxBlob);
-      const newWindow = window.open(docxUrl, '_blank');
-      if (newWindow) {
-        newWindow.focus();
-        // Clean up the URL after a delay
-        setTimeout(() => {
-          URL.revokeObjectURL(docxUrl);
-        }, 10000);
-      }
-      
-    } catch (error) {
-      console.error('Error generating Word preview:', error);
-      alert('Error generating Word preview. Please try again.');
-    }
-  };
 
 
   const handleRefresh = async () => {
@@ -1489,16 +1498,24 @@ const CBYDP: React.FC = () => {
                <h3 className="text-lg font-semibold">Print Preview</h3>
                <div className="flex space-x-3">
                  <button
-                   onClick={handlePrint}
-                   className="btn-primary flex items-center"
-                 >
-                   <Printer className="h-4 w-4 mr-2" />
-                   Preview Word Template
-                 </button>
-                 <button
                    onClick={async () => {
                      try {
-                       const data = mapCBYDPToTemplate({ form, skProfile });
+                       console.log('Form data before export:', form);
+                       console.log('SK Profile data:', skProfile);
+                       console.log('Current user:', user);
+                       
+                       // Create comprehensive payload with multiple data sources
+                       const payload = {
+                         form,
+                         skProfile,
+                         user,
+                         // Add any additional context that might help
+                         timestamp: new Date().toISOString(),
+                         exportType: 'CBYDP'
+                       };
+                       
+                       const data = mapCBYDPToTemplate(payload);
+                       console.log('Mapped data for export:', data);
                        await exportDocxFromTemplate({
                          templatePath: '/templates/cbydp_template.docx',
                          data,
@@ -1514,6 +1531,53 @@ const CBYDP: React.FC = () => {
                    <Download className="h-4 w-4 mr-2" />
                    Export to Word
                  </button>
+                 
+                 {/* DEBUG TEST BUTTON */}
+                 <button
+                   onClick={async () => {
+                     try {
+                       console.log('=== RUNNING DEBUG TEST ===');
+                       await testTemplateExport();
+                       alert('Debug test completed! Check console for details.');
+                     } catch (e) {
+                       console.error('Debug test failed', e);
+                       alert('Debug test failed. Check console for details.');
+                     }
+                   }}
+                   className="btn-primary flex items-center bg-red-600 hover:bg-red-700"
+                 >
+                   <AlertCircle className="h-4 w-4 mr-2" />
+                   DEBUG TEST
+                 </button>
+                 
+                 {/* INSPECT TEMPLATE BUTTON */}
+                 <button
+                   onClick={async () => {
+                     try {
+                       console.log('=== INSPECTING TEMPLATE ===');
+                       await inspectTemplate();
+                       alert('Template inspection completed! Check console for details.');
+                     } catch (e) {
+                       console.error('Template inspection failed', e);
+                       alert('Template inspection failed. Check console for details.');
+                     }
+                   }}
+                   className="btn-primary flex items-center bg-blue-600 hover:bg-blue-700"
+                 >
+                   <Eye className="h-4 w-4 mr-2" />
+                   INSPECT TEMPLATE
+                 </button>
+               </div>
+             </div>
+             
+             {/* Note about printing process */}
+             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg">
+               <div className="flex items-start">
+                 <AlertCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                 <div className="text-sm">
+                   <strong>Note:</strong> To print the CBYDP document, you must first export it using the "Export to Word" button above, 
+                   then manually add your barangay logo to the downloaded Word document, and finally print from there due to system limitations.
+                 </div>
                </div>
              </div>
              
@@ -2191,6 +2255,7 @@ const CBYDP: React.FC = () => {
                                    value={project.responsible}
                                    onChange={(e) => handleProjectChange(centerIdx, projectIdx, 'responsible', e.target.value)}
                                    className="w-full border-none focus:ring-0 text-sm"
+                                   placeholder="Enter person responsible..."
                                     disabled={!form.isEditingOpen || form.status === 'approved'}
                                  />
                                </td>
