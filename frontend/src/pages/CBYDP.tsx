@@ -125,17 +125,11 @@ const CBYDP: React.FC = () => {
       return; // Invalid input
     }
     
-    // If user is typing and hasn't added a decimal point, don't auto-format yet
-    // Only format when they finish typing (on blur or when they add decimal)
-    if (cleaned && !cleaned.includes('.')) {
-      // Store the raw number without formatting for now
-      const rawNumber = cleaned.replace(/,/g, '');
-      callback(rawNumber);
-    } else {
-      // Remove commas for parsing
-      const parsed = parseNumber(cleaned);
-      callback(parsed);
-    }
+    // Store the raw input value without formatting during typing
+    // This allows natural typing flow like 1 -> 10 -> 100 -> 1000
+    // Remove any existing commas to prevent conflicts
+    const rawValue = cleaned.replace(/,/g, '');
+    callback(rawValue);
   };
 
   const handleNumberDisplay = (value: string): string => {
@@ -2239,11 +2233,16 @@ const CBYDP: React.FC = () => {
                                          />
                                          <input
                                            type="text"
-                                           value={handleNumberDisplay(expense.cost)}
+                                           value={expense.cost}
                                            onChange={(e) => {
                                              handleNumberInput(e.target.value, (value) => {
                                                handleExpenseChange(centerIdx, projectIdx, expenseIdx, 'cost', value);
                                              });
+                                           }}
+                                           onBlur={(e) => {
+                                             // Format the number when user finishes typing
+                                             const formatted = handleNumberDisplay(e.target.value);
+                                             handleExpenseChange(centerIdx, projectIdx, expenseIdx, 'cost', formatted);
                                            }}
                                            className="w-full border-none focus:ring-0 text-xs p-1"
                                            placeholder="Cost"

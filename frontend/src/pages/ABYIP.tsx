@@ -316,17 +316,11 @@ const ABYIP: React.FC = () => {
       return; // Invalid input
     }
     
-    // If user is typing and hasn't added a decimal point, don't auto-format yet
-    // Only format when they finish typing (on blur or when they add decimal)
-    if (cleaned && !cleaned.includes('.')) {
-      // Store the raw number without formatting for now
-      const rawNumber = cleaned.replace(/,/g, '');
-      callback(rawNumber);
-    } else {
-      // Remove commas for parsing
-      const parsed = parseNumber(cleaned);
-      callback(parsed);
-    }
+    // Store the raw input value without formatting during typing
+    // This allows natural typing flow like 1 -> 10 -> 100 -> 1000
+    // Remove any existing commas to prevent conflicts
+    const rawValue = cleaned.replace(/,/g, '');
+    callback(rawValue);
   };
 
   const handleNumberDisplay = (value: string): string => {
@@ -337,9 +331,10 @@ const ABYIP: React.FC = () => {
 
   // Budget calculation helper functions
   const calculateProjectTotal = (budget: { mooe: string; co: string; ps: string; total: string }) => {
-    const mooe = parseFloat(budget.mooe) || 0;
-    const co = parseFloat(budget.co) || 0;
-    const ps = parseFloat(budget.ps) || 0;
+    // Handle both raw values (during typing) and formatted values (after blur)
+    const mooe = parseFloat(budget.mooe?.replace(/,/g, '') || '0') || 0;
+    const co = parseFloat(budget.co?.replace(/,/g, '') || '0') || 0;
+    const ps = parseFloat(budget.ps?.replace(/,/g, '') || '0') || 0;
     return mooe + co + ps;
   };
 
@@ -392,7 +387,7 @@ const ABYIP: React.FC = () => {
   };
 
   const isBudgetBalanced = () => {
-    const yearlyBudget = parseFloat(form.yearlyBudget) || 0;
+    const yearlyBudget = parseFloat(form.yearlyBudget?.replace(/,/g, '') || '0') || 0;
     const grandTotal = calculateGrandTotal();
     return Math.abs(yearlyBudget - grandTotal) < 0.01; // Allow for small rounding differences
   };
@@ -1633,11 +1628,16 @@ const ABYIP: React.FC = () => {
                 </label>
                <input
                  type="text"
-                 value={handleNumberDisplay(form.yearlyBudget)}
+                 value={form.yearlyBudget}
                  onChange={(e) => {
                    handleNumberInput(e.target.value, (value) => {
                      setForm(prev => ({ ...prev, yearlyBudget: value }));
                    });
+                 }}
+                 onBlur={(e) => {
+                   // Format the number when user finishes typing
+                   const formatted = handleNumberDisplay(e.target.value);
+                   setForm(prev => ({ ...prev, yearlyBudget: formatted }));
                  }}
                  disabled={!form.isEditingOpen || form.status === 'approved'}
                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1664,7 +1664,7 @@ const ABYIP: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600">Remaining:</span>
                    <span className={`font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
-                     ₱{formatNumber((parseFloat(form.yearlyBudget || '0') - calculateGrandTotal()).toString())}
+                     ₱{formatNumber((parseFloat(form.yearlyBudget?.replace(/,/g, '') || '0') - calculateGrandTotal()).toString())}
                    </span>
                   </div>
                   {!isBudgetBalanced() && (
@@ -1949,7 +1949,7 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={handleNumberDisplay(project.budget.mooe)}
+                                  value={project.budget.mooe}
                                   onChange={async (e) => {
                                     handleNumberInput(e.target.value, async (value) => {
                                       const updatedCenters = form.centers.map((c, i) =>
@@ -1965,6 +1965,21 @@ const ABYIP: React.FC = () => {
                                       await autoSaveProjectChange(updatedForm);
                                     });
                                   }}
+                                  onBlur={async (e) => {
+                                    // Format the number when user finishes typing
+                                    const formatted = handleNumberDisplay(e.target.value);
+                                    const updatedCenters = form.centers.map((c, i) =>
+                                      i === centerIdx ? {
+                                        ...c,
+                                        projects: c.projects.map((p, j) =>
+                                          j === projectIdx ? { ...p, budget: { ...p.budget, mooe: formatted } } : p
+                                        )
+                                      } : c
+                                    );
+                                    const updatedForm = { ...form, centers: updatedCenters };
+                                    setForm(updatedForm);
+                                    await autoSaveProjectChange(updatedForm);
+                                  }}
                                   className="w-full border-none focus:ring-0 text-xs"
                                   placeholder="MOOE"
                                   disabled={form.status === 'not_initiated' || !form.isEditingOpen || form.status === 'approved'}
@@ -1973,7 +1988,7 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={handleNumberDisplay(project.budget.co)}
+                                  value={project.budget.co}
                                   onChange={async (e) => {
                                     handleNumberInput(e.target.value, async (value) => {
                                       const updatedCenters = form.centers.map((c, i) =>
@@ -1989,6 +2004,21 @@ const ABYIP: React.FC = () => {
                                       await autoSaveProjectChange(updatedForm);
                                     });
                                   }}
+                                  onBlur={async (e) => {
+                                    // Format the number when user finishes typing
+                                    const formatted = handleNumberDisplay(e.target.value);
+                                    const updatedCenters = form.centers.map((c, i) =>
+                                      i === centerIdx ? {
+                                        ...c,
+                                        projects: c.projects.map((p, j) =>
+                                          j === projectIdx ? { ...p, budget: { ...p.budget, co: formatted } } : p
+                                        )
+                                      } : c
+                                    );
+                                    const updatedForm = { ...form, centers: updatedCenters };
+                                    setForm(updatedForm);
+                                    await autoSaveProjectChange(updatedForm);
+                                  }}
                                   className="w-full border-none focus:ring-0 text-xs"
                                   placeholder="CO"
                                   disabled={form.status === 'not_initiated' || !form.isEditingOpen || form.status === 'approved'}
@@ -1997,7 +2027,7 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={handleNumberDisplay(project.budget.ps)}
+                                  value={project.budget.ps}
                                   onChange={async (e) => {
                                     handleNumberInput(e.target.value, async (value) => {
                                       const updatedCenters = form.centers.map((c, i) =>
@@ -2012,6 +2042,21 @@ const ABYIP: React.FC = () => {
                                       setForm(updatedForm);
                                       await autoSaveProjectChange(updatedForm);
                                     });
+                                  }}
+                                  onBlur={async (e) => {
+                                    // Format the number when user finishes typing
+                                    const formatted = handleNumberDisplay(e.target.value);
+                                    const updatedCenters = form.centers.map((c, i) =>
+                                      i === centerIdx ? {
+                                        ...c,
+                                        projects: c.projects.map((p, j) =>
+                                          j === projectIdx ? { ...p, budget: { ...p.budget, ps: formatted } } : p
+                                        )
+                                      } : c
+                                    );
+                                    const updatedForm = { ...form, centers: updatedCenters };
+                                    setForm(updatedForm);
+                                    await autoSaveProjectChange(updatedForm);
                                   }}
                                   className="w-full border-none focus:ring-0 text-xs"
                                   placeholder="PS"
