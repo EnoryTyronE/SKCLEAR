@@ -99,6 +99,51 @@ const CBYDP: React.FC = () => {
   const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Number formatting utility functions
+  const formatNumber = (value: string | number): string => {
+    if (!value && value !== 0) return '';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const parseNumber = (value: string): string => {
+    if (!value) return '';
+    // Remove commas and parse as number
+    const cleaned = value.replace(/,/g, '');
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) return '';
+    return num.toString();
+  };
+
+  const handleNumberInput = (value: string, callback: (value: string) => void) => {
+    // Allow only numbers, commas, and one decimal point
+    const cleaned = value.replace(/[^0-9.,]/g, '');
+    // Ensure only one decimal point
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      return; // Invalid input
+    }
+    
+    // If user is typing and hasn't added a decimal point, don't auto-format yet
+    // Only format when they finish typing (on blur or when they add decimal)
+    if (cleaned && !cleaned.includes('.')) {
+      // Store the raw number without formatting for now
+      const rawNumber = cleaned.replace(/,/g, '');
+      callback(rawNumber);
+    } else {
+      // Remove commas for parsing
+      const parsed = parseNumber(cleaned);
+      callback(parsed);
+    }
+  };
+
+  const handleNumberDisplay = (value: string): string => {
+    if (!value) return '';
+    // Always format for display - this ensures 5000 shows as 5,000.00
+    return formatNumber(value);
+  };
+
   const loadExistingCBYDP = useCallback(async () => {
     try {
       console.log('Loading existing CBYDP for user:', user?.name, user?.role);
@@ -1742,7 +1787,7 @@ const CBYDP: React.FC = () => {
                                  <td className="border border-gray-700 p-1 align-top">
                                    {(project.expenses || []).map((expense, idx) => (
                                      <div key={idx} className="text-xs">
-                                       {expense.description}: ₱{expense.cost}
+                                       {expense.description}: ₱{formatNumber(expense.cost)}
                                      </div>
                                    ))}
                                  </td>
@@ -2194,8 +2239,12 @@ const CBYDP: React.FC = () => {
                                          />
                                          <input
                                            type="text"
-                                           value={expense.cost}
-                                           onChange={(e) => handleExpenseChange(centerIdx, projectIdx, expenseIdx, 'cost', e.target.value)}
+                                           value={handleNumberDisplay(expense.cost)}
+                                           onChange={(e) => {
+                                             handleNumberInput(e.target.value, (value) => {
+                                               handleExpenseChange(centerIdx, projectIdx, expenseIdx, 'cost', value);
+                                             });
+                                           }}
                                            className="w-full border-none focus:ring-0 text-xs p-1"
                                            placeholder="Cost"
                                            style={{ minHeight: '24px' }}

@@ -99,6 +99,7 @@ const ABYIP: React.FC = () => {
   const [projectSelectionModalOpen, setProjectSelectionModalOpen] = useState(false);
   const [selectedCenterForProject, setSelectedCenterForProject] = useState<number | null>(null);
   const [cbydpProjects, setCbydpProjects] = useState<any[]>([]);
+  const [cbydpCentersForProjects, setCbydpCentersForProjects] = useState<any[]>([]);
   const [selectedCbydpProjects, setSelectedCbydpProjects] = useState<number[]>([]);
 
   // Helper functions to create mandatory centers
@@ -191,20 +192,40 @@ const ABYIP: React.FC = () => {
   // Load CBYDP projects for selection
   const loadCbydpProjects = useCallback(async () => {
     try {
+      console.log('Loading CBYDP projects for ABYIP...');
       const cbydp = await getCBYDP();
+      console.log('CBYDP data received:', cbydp);
+      
       if (cbydp && (cbydp as any).centers) {
-        // Flatten all projects from all centers
-        const allProjects = (cbydp as any).centers.flatMap((center: any) => 
-          (center.programs || []).map((program: any) => ({
-            ...program,
+        console.log('CBYDP centers found:', (cbydp as any).centers);
+        
+        // Store centers with their projects
+        const centersWithProjects = (cbydp as any).centers.map((center: any) => ({
+          ...center,
+          projects: (center.projects || []).map((project: any) => ({
+            ...project,
             sourceCenter: center.name,
-            type: 'program'
+            type: 'project'
           }))
-        );
+        }));
+        
+        // Flatten all projects for selection tracking
+        const allProjects = centersWithProjects.flatMap((center: any) => center.projects);
+        
+        console.log('CBYDP centers with projects:', centersWithProjects);
+        console.log('Flattened CBYDP projects:', allProjects);
+        
+        setCbydpCentersForProjects(centersWithProjects);
         setCbydpProjects(allProjects);
+      } else {
+        console.log('No CBYDP centers found or CBYDP is null');
+        setCbydpCentersForProjects([]);
+        setCbydpProjects([]);
       }
     } catch (error) {
       console.error('Error loading CBYDP projects:', error);
+      setCbydpCentersForProjects([]);
+      setCbydpProjects([]);
     }
   }, []);
 
@@ -213,21 +234,33 @@ const ABYIP: React.FC = () => {
     if (selectedCenterForProject === null || selectedCbydpProjects.length === 0) return;
 
     const selectedProjects = selectedCbydpProjects.map(idx => cbydpProjects[idx]);
-    const convertedProjects = selectedProjects.map((project: any) => ({
-      referenceCode: project.referenceCode || '',
-      ppas: project.ppas || project.program || '',
-      description: project.description || '',
-      expectedResult: project.expectedResult || '',
-      performanceIndicator: project.performanceIndicator || '',
-      periodOfImplementation: project.periodOfImplementation || '',
-      budget: {
-        mooe: project.budget?.mooe || '',
-        co: project.budget?.co || '',
-        ps: project.budget?.ps || '',
-        total: project.budget?.total || '',
-      },
-      personResponsible: project.personResponsible || '',
-    }));
+    console.log('Selected CBYDP projects for conversion:', selectedProjects);
+    
+    const convertedProjects = selectedProjects.map((project: any) => {
+      // Calculate total expense from CBYDP expenses
+      const totalExpense = (project.expenses || []).reduce((sum: number, expense: any) => {
+        const cost = parseFloat(expense.cost?.replace(/,/g, '') || '0');
+        return sum + cost;
+      }, 0);
+
+      return {
+        referenceCode: project.referenceCode || '',
+        ppas: project.ppas || '',
+        description: project.objective || project.concern || '',
+        expectedResult: project.indicator || '',
+        performanceIndicator: project.target1 || project.target2 || project.target3 || '',
+        periodOfImplementation: 'January - December', // Default period
+        budget: {
+          mooe: totalExpense.toString(),
+          co: '',
+          ps: '',
+          total: totalExpense.toString(),
+        },
+        personResponsible: project.responsible || '',
+      };
+    });
+    
+    console.log('Converted projects for ABYIP:', convertedProjects);
 
     const updatedCenters = form.centers.map((c, i) =>
       i === selectedCenterForProject 
@@ -247,6 +280,51 @@ const ABYIP: React.FC = () => {
     setSelectedCenterForProject(centerIdx);
     setProjectSelectionModalOpen(true);
     loadCbydpProjects();
+  };
+
+  // Number formatting utility functions
+  const formatNumber = (value: string | number): string => {
+    if (!value && value !== 0) return '';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const parseNumber = (value: string): string => {
+    if (!value) return '';
+    // Remove commas and parse as number
+    const cleaned = value.replace(/,/g, '');
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) return '';
+    return num.toString();
+  };
+
+  const handleNumberInput = (value: string, callback: (value: string) => void) => {
+    // Allow only numbers, commas, and one decimal point
+    const cleaned = value.replace(/[^0-9.,]/g, '');
+    // Ensure only one decimal point
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      return; // Invalid input
+    }
+    
+    // If user is typing and hasn't added a decimal point, don't auto-format yet
+    // Only format when they finish typing (on blur or when they add decimal)
+    if (cleaned && !cleaned.includes('.')) {
+      // Store the raw number without formatting for now
+      const rawNumber = cleaned.replace(/,/g, '');
+      callback(rawNumber);
+    } else {
+      // Remove commas for parsing
+      const parsed = parseNumber(cleaned);
+      callback(parsed);
+    }
+  };
+
+  const handleNumberDisplay = (value: string): string => {
+    if (!value) return '';
+    // Always format for display - this ensures 5000 shows as 5,000.00
+    return formatNumber(value);
   };
 
   // Budget calculation helper functions
@@ -1167,10 +1245,10 @@ const ABYIP: React.FC = () => {
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.expectedResult}</td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.performanceIndicator}</td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.periodOfImplementation}</td>
-                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.mooe && `₱${project.budget.mooe}`}</td>
-                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.co && `₱${project.budget.co}`}</td>
-                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.ps && `₱${project.budget.ps}`}</td>
-                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.total && `₱${project.budget.total}`}</td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.mooe && `₱${formatNumber(project.budget.mooe)}`}</td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.co && `₱${formatNumber(project.budget.co)}`}</td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.ps && `₱${formatNumber(project.budget.ps)}`}</td>
+                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.budget.total && `₱${formatNumber(project.budget.total)}`}</td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top' }}>{project.personResponsible}</td>
                            </tr>
                          )) : Array.from({ length: 2 }).map((_, pi) => (
@@ -1270,37 +1348,41 @@ const ABYIP: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Total Yearly Budget (₱) *
                 </label>
-                <input
-                  type="number"
-                  value={form.yearlyBudget}
-                  onChange={(e) => setForm(prev => ({ ...prev, yearlyBudget: e.target.value }))}
-                  disabled={!form.isEditingOpen || form.status === 'approved'}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter total yearly budget"
-                />
+               <input
+                 type="text"
+                 value={handleNumberDisplay(form.yearlyBudget)}
+                 onChange={(e) => {
+                   handleNumberInput(e.target.value, (value) => {
+                     setForm(prev => ({ ...prev, yearlyBudget: value }));
+                   });
+                 }}
+                 disabled={!form.isEditingOpen || form.status === 'approved'}
+                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                 placeholder="Enter total yearly budget (e.g., 1,000,000.00)"
+               />
               </div>
 
               {/* Budget Summary */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h5 className="font-semibold text-gray-800 mb-2">Budget Summary</h5>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Yearly Budget:</span>
-                    <span className="ml-2 font-semibold">₱{parseFloat(form.yearlyBudget || '0').toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Total Allocated:</span>
-                    <span className={`ml-2 font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
-                      ₱{calculateGrandTotal().toLocaleString()}
-                    </span>
-                  </div>
+                 <div>
+                   <span className="text-gray-600">Yearly Budget:</span>
+                   <span className="ml-2 font-semibold">₱{formatNumber(form.yearlyBudget || '0')}</span>
+                 </div>
+                 <div>
+                   <span className="text-gray-600">Total Allocated:</span>
+                   <span className={`ml-2 font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
+                     ₱{formatNumber(calculateGrandTotal().toString())}
+                   </span>
+                 </div>
                 </div>
                 <div className="mt-2 pt-2 border-t border-gray-200">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600">Remaining:</span>
-                    <span className={`font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
-                      ₱{(parseFloat(form.yearlyBudget || '0') - calculateGrandTotal()).toLocaleString()}
-                    </span>
+                   <span className={`font-semibold ${isBudgetBalanced() ? 'text-green-600' : 'text-red-600'}`}>
+                     ₱{formatNumber((parseFloat(form.yearlyBudget || '0') - calculateGrandTotal()).toString())}
+                   </span>
                   </div>
                   {!isBudgetBalanced() && (
                     <div className="mt-2 text-sm text-red-600">
@@ -1628,19 +1710,21 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={project.budget.mooe}
+                                  value={handleNumberDisplay(project.budget.mooe)}
                                   onChange={async (e) => {
-                                    const updatedCenters = form.centers.map((c, i) =>
-                                      i === centerIdx ? {
-                                        ...c,
-                                        projects: c.projects.map((p, j) =>
-                                          j === projectIdx ? { ...p, budget: { ...p.budget, mooe: e.target.value } } : p
-                                        )
-                                      } : c
-                                    );
-                                    const updatedForm = { ...form, centers: updatedCenters };
-                                    setForm(updatedForm);
-                                    await autoSaveProjectChange(updatedForm);
+                                    handleNumberInput(e.target.value, async (value) => {
+                                      const updatedCenters = form.centers.map((c, i) =>
+                                        i === centerIdx ? {
+                                          ...c,
+                                          projects: c.projects.map((p, j) =>
+                                            j === projectIdx ? { ...p, budget: { ...p.budget, mooe: value } } : p
+                                          )
+                                        } : c
+                                      );
+                                      const updatedForm = { ...form, centers: updatedCenters };
+                                      setForm(updatedForm);
+                                      await autoSaveProjectChange(updatedForm);
+                                    });
                                   }}
                                   className="w-full border-none focus:ring-0 text-xs"
                                   placeholder="MOOE"
@@ -1650,19 +1734,21 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={project.budget.co}
+                                  value={handleNumberDisplay(project.budget.co)}
                                   onChange={async (e) => {
-                                    const updatedCenters = form.centers.map((c, i) =>
-                                      i === centerIdx ? {
-                                        ...c,
-                                        projects: c.projects.map((p, j) =>
-                                          j === projectIdx ? { ...p, budget: { ...p.budget, co: e.target.value } } : p
-                                        )
-                                      } : c
-                                    );
-                                    const updatedForm = { ...form, centers: updatedCenters };
-                                    setForm(updatedForm);
-                                    await autoSaveProjectChange(updatedForm);
+                                    handleNumberInput(e.target.value, async (value) => {
+                                      const updatedCenters = form.centers.map((c, i) =>
+                                        i === centerIdx ? {
+                                          ...c,
+                                          projects: c.projects.map((p, j) =>
+                                            j === projectIdx ? { ...p, budget: { ...p.budget, co: value } } : p
+                                          )
+                                        } : c
+                                      );
+                                      const updatedForm = { ...form, centers: updatedCenters };
+                                      setForm(updatedForm);
+                                      await autoSaveProjectChange(updatedForm);
+                                    });
                                   }}
                                   className="w-full border-none focus:ring-0 text-xs"
                                   placeholder="CO"
@@ -1672,19 +1758,21 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={project.budget.ps}
+                                  value={handleNumberDisplay(project.budget.ps)}
                                   onChange={async (e) => {
-                                    const updatedCenters = form.centers.map((c, i) =>
-                                      i === centerIdx ? {
-                                        ...c,
-                                        projects: c.projects.map((p, j) =>
-                                          j === projectIdx ? { ...p, budget: { ...p.budget, ps: e.target.value } } : p
-                                        )
-                                      } : c
-                                    );
-                                    const updatedForm = { ...form, centers: updatedCenters };
-                                    setForm(updatedForm);
-                                    await autoSaveProjectChange(updatedForm);
+                                    handleNumberInput(e.target.value, async (value) => {
+                                      const updatedCenters = form.centers.map((c, i) =>
+                                        i === centerIdx ? {
+                                          ...c,
+                                          projects: c.projects.map((p, j) =>
+                                            j === projectIdx ? { ...p, budget: { ...p.budget, ps: value } } : p
+                                          )
+                                        } : c
+                                      );
+                                      const updatedForm = { ...form, centers: updatedCenters };
+                                      setForm(updatedForm);
+                                      await autoSaveProjectChange(updatedForm);
+                                    });
                                   }}
                                   className="w-full border-none focus:ring-0 text-xs"
                                   placeholder="PS"
@@ -1694,19 +1782,21 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2">
                                 <input
                                   type="text"
-                                  value={project.budget.total}
+                                  value={handleNumberDisplay(project.budget.total)}
                                   onChange={async (e) => {
-                                    const updatedCenters = form.centers.map((c, i) =>
-                                      i === centerIdx ? {
-                                        ...c,
-                                        projects: c.projects.map((p, j) =>
-                                          j === projectIdx ? { ...p, budget: { ...p.budget, total: e.target.value } } : p
-                                        )
-                                      } : c
-                                    );
-                                    const updatedForm = { ...form, centers: updatedCenters };
-                                    setForm(updatedForm);
-                                    await autoSaveProjectChange(updatedForm);
+                                    handleNumberInput(e.target.value, async (value) => {
+                                      const updatedCenters = form.centers.map((c, i) =>
+                                        i === centerIdx ? {
+                                          ...c,
+                                          projects: c.projects.map((p, j) =>
+                                            j === projectIdx ? { ...p, budget: { ...p.budget, total: value } } : p
+                                          )
+                                        } : c
+                                      );
+                                      const updatedForm = { ...form, centers: updatedCenters };
+                                      setForm(updatedForm);
+                                      await autoSaveProjectChange(updatedForm);
+                                    });
                                   }}
                                   className="w-full border-none focus:ring-0 text-xs font-semibold"
                                   placeholder="Total"
@@ -1823,55 +1913,101 @@ const ABYIP: React.FC = () => {
               <p className="text-sm text-gray-600">
                 Select projects from your approved CBYDP to add to this center. You can edit them after adding.
               </p>
+              {cbydpProjects.length === 0 && (
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-700">
+                    <strong>Note:</strong> No CBYDP projects found. Please ensure you have an approved CBYDP with projects before importing.
+                  </p>
+                </div>
+              )}
+              {selectedCbydpProjects.length > 0 && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    <strong>Selected:</strong> {selectedCbydpProjects.length} project(s) from CBYDP
+                  </p>
+                </div>
+              )}
             </div>
 
-            {cbydpProjects.length === 0 ? (
+            {cbydpCentersForProjects.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <p>No CBYDP projects found. Please ensure you have an approved CBYDP.</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {cbydpProjects.map((project, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      selectedCbydpProjects.includes(idx)
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => {
-                      setSelectedCbydpProjects(prev =>
-                        prev.includes(idx)
-                          ? prev.filter(i => i !== idx)
-                          : [...prev, idx]
-                      );
-                    }}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedCbydpProjects.includes(idx)}
-                            onChange={() => {}}
-                            className="rounded"
-                          />
-                          <span className="font-medium text-sm">
-                            {project.ppas || project.program || 'Untitled Project'}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            ({project.sourceCenter})
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-600 ml-6">
-                          {project.description || 'No description available'}
-                        </p>
-                        {project.referenceCode && (
-                          <p className="text-xs text-gray-500 ml-6">
-                            Ref: {project.referenceCode}
-                          </p>
-                        )}
-                      </div>
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {cbydpCentersForProjects.map((center, centerIdx) => (
+                  <div key={centerIdx} className="border border-gray-200 rounded-lg">
+                    {/* Center Header */}
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                      <h4 className="font-semibold text-gray-800 text-sm">
+                        {center.name}
+                      </h4>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {center.agenda}
+                      </p>
+                    </div>
+                    
+                    {/* Projects in this center */}
+                    <div className="p-3 space-y-2">
+                      {center.projects.length === 0 ? (
+                        <p className="text-xs text-gray-500 italic">No projects in this center</p>
+                      ) : (
+                        center.projects.map((project: any, projectIdx: number) => {
+                          // Calculate the global index for this project
+                          const globalIndex = cbydpProjects.findIndex(p => 
+                            p.ppas === project.ppas && p.sourceCenter === project.sourceCenter
+                          );
+                          
+                          return (
+                            <div
+                              key={projectIdx}
+                              className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                                selectedCbydpProjects.includes(globalIndex)
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                              onClick={() => {
+                                setSelectedCbydpProjects(prev =>
+                                  prev.includes(globalIndex)
+                                    ? prev.filter(i => i !== globalIndex)
+                                    : [...prev, globalIndex]
+                                );
+                              }}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedCbydpProjects.includes(globalIndex)}
+                                      onChange={() => {}}
+                                      className="rounded"
+                                    />
+                                    <span className="font-medium text-sm">
+                                      {project.ppas || 'Untitled Project'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-600 ml-6">
+                                    {project.objective || project.concern || 'No description available'}
+                                  </p>
+                                  {project.referenceCode && (
+                                    <p className="text-xs text-gray-500 ml-6">
+                                      Ref: {project.referenceCode}
+                                    </p>
+                                  )}
+                                  {(project.expenses && project.expenses.length > 0) && (
+                                    <p className="text-xs text-gray-500 ml-6">
+                                      Budget: ₱{formatNumber(project.expenses.reduce((sum: number, expense: any) => 
+                                        sum + (parseFloat(expense.cost?.replace(/,/g, '') || '0')), 0
+                                      ).toString())}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 ))}

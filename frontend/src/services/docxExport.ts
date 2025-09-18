@@ -4,6 +4,14 @@ import { saveAs } from 'file-saver';
 
 export type Binary = ArrayBuffer | Uint8Array;
 
+// Number formatting utility for export
+function formatNumberForExport(value: string | number): string {
+  if (!value && value !== 0) return '';
+  const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+  if (isNaN(num)) return '';
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 async function fetchBinary(path: string): Promise<ArrayBuffer> {
   const res = await fetch(path, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Failed to load template: ${path}`);
@@ -288,7 +296,7 @@ export function mapCBYDPToTemplate(payload: any) {
           ppas: combinedPpas || p.ppas || '',
           expenses: (p.expenses || []).map((e: any) => ({ 
             description: e.description || '', 
-            cost: e.cost || '' 
+            cost: formatNumberForExport(e.cost || '') 
           })),
           responsible: p.responsible || '',
         };
@@ -419,10 +427,10 @@ export function mapABYIPToTemplate(payload: any) {
         expectedResult: p.expectedResult || '',
         performanceIndicator: p.performanceIndicator || '',
         periodOfImplementation: p.periodOfImplementation || '',
-        mooe: p?.budget?.mooe || '',
-        co: p?.budget?.co || '',
-        ps: p?.budget?.ps || '',
-        total: p?.budget?.total || '',
+        mooe: formatNumberForExport(p?.budget?.mooe || ''),
+        co: formatNumberForExport(p?.budget?.co || ''),
+        ps: formatNumberForExport(p?.budget?.ps || ''),
+        total: formatNumberForExport(p?.budget?.total || ''),
         personResponsible: p.personResponsible || '',
       })),
       
