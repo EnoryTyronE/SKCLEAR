@@ -251,12 +251,17 @@ const ABYIP: React.FC = () => {
         return sum + cost;
       }, 0);
 
+      // Extract the first program, project, and action from the arrays
+      const firstProgram = (project.programs && project.programs.length > 0) ? project.programs[0] : '';
+      const firstProject = (project.projects && project.projects.length > 0) ? project.projects[0] : '';
+      const firstAction = (project.actions && project.actions.length > 0) ? project.actions[0] : '';
+
       return {
         referenceCode: project.referenceCode || '',
-        ppas: project.ppas || '',
-        description: project.objective || project.concern || '',
-        expectedResult: project.indicator || '',
-        performanceIndicator: project.target1 || project.target2 || project.target3 || '',
+        ppas: firstProgram || project.ppas || '', // Map to first program from CBYDP programs array
+        description: firstAction || project.concern || '', // Map to first action from CBYDP actions array
+        expectedResult: project.objective || '', // Map to objective from CBYDP
+        performanceIndicator: project.indicator || '', // Map to indicator from CBYDP
         periodOfImplementation: 'January - December', // Default period
         budget: {
           mooe: totalExpense.toString(),
