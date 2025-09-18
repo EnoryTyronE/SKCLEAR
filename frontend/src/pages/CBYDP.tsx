@@ -5,6 +5,8 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, Printer, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
 import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
+import Docxtemplater from 'docxtemplater';
+import PizZip from 'pizzip';
 
 interface CBYDPRow {
   concern: string;
@@ -21,11 +23,6 @@ interface CBYDPRow {
   responsible: string;
 }
 
-interface PPARow {
-  program: string;
-  project: string;
-  action: string;
-}
 
 interface CBYDPExpense {
   description: string;
@@ -160,7 +157,7 @@ const CBYDP: React.FC = () => {
       console.log('User changed, reloading CBYDP for:', user.name);
       loadExistingCBYDP();
     }
-    }, [user?.uid, loadExistingCBYDP]);
+    }, [user, loadExistingCBYDP]);
 
   const loadSKMembers = async () => {
     try {
@@ -955,321 +952,50 @@ const CBYDP: React.FC = () => {
 
 
 
-  const handlePrint = () => {
-    const performPrint = () => {
-      if (!printRef.current) return;
-      const printContents = printRef.current.innerHTML;
-      const title = document.title || 'Print';
-      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-        .map((el) => el.outerHTML)
-        .join('\n');
 
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-      doc.open();
-      doc.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <base href="${window.location.origin}/" />
-    <title>${title}</title>
-    ${styles}
-                                       <style>
-         @page { 
-           size: 13in 8.5in landscape; 
-           margin: 8mm;
-         }
-         html, body { background: white; }
-         body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; margin: 0; padding: 0; }
-         .print-content { 
-           width: 13in !important; 
-           min-height: 8.5in !important; 
-           padding: 18px;
-         }
-         table { page-break-inside: auto; }
-         .page-content { page-break-inside: avoid; }
-         .table-section { page-break-inside: auto; }
-         tr { page-break-inside: auto; }
-         .prepared-by-section { 
-           page-break-inside: avoid; 
-           margin-top: 1.5rem;
-         }
-       </style>
-  </head>
-  <body>
-    <div class="print-content">${printContents}</div>
-    <script>
-      (function(){
-        function waitForImages() {
-          const imgs = Array.from(document.images || []);
-          if (imgs.length === 0) return Promise.resolve();
-          return Promise.all(imgs.map(img => new Promise(res => {
-            if (img.complete) return res();
-            img.onload = img.onerror = () => res();
-          })));
-        }
-        Promise.resolve()
-          .then(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null)
-          .then(() => waitForImages())
-          .then(() => { setTimeout(() => { window.focus(); window.print(); }, 200); });
-      })();
-    </script>
-  </body>
-</html>`);
-      doc.close();
-
-      // Cleanup the iframe after some time
-      setTimeout(() => { try { document.body.removeChild(iframe); } catch (_) {} }, 5000);
-    };
-
-    // Ensure the preview content exists before printing
-    if (!printRef.current) {
-      const wasPreview = preview;
-      if (!wasPreview) setPreview(true);
-      setTimeout(() => {
-        performPrint();
-        if (!wasPreview) setTimeout(() => setPreview(false), 300);
-      }, 300);
-      return;
-    }
-
-    performPrint();
-  };
-
-  const exportToWord = () => {
-    const title = `CBYDP_${skProfile?.barangay || 'Document'}_${new Date().toISOString().split('T')[0]}`;
-    
-    // Generate Word document with inline styles - completely bypass CSS classes
-    const generateWordDocument = () => {
-      let content = '';
+  const handlePrint = async () => {
+    try {
+      // Use the exact same approach as Word export - generate docx from template
+      const data = mapCBYDPToTemplate({ form, skProfile });
       
-      form.centers.forEach((center, ci) => {
-        const totalRows = center.projects.length;
-        const rowsPerPage = 2;
-        const totalPages = Math.ceil(totalRows / rowsPerPage);
-        
-        Array.from({ length: totalPages }, (_, pageNum) => {
-          const startRow = pageNum * rowsPerPage;
-          const endRow = Math.min(startRow + rowsPerPage, totalRows);
-          const pageRows = center.projects.slice(startRow, endRow);
-          
-          content += `
-            <div style="page-break-after: always; width: 13in; min-height: 8.5in; padding: 18px; font-family: 'Calibri', Arial, sans-serif; background: white;">
-              <!-- Header -->
-              <div style="position: relative; margin-bottom: 12px;">
-                <div style="position: absolute; top: 0; right: 0;">
-                  <div style="font-size: 9pt; font-weight: 600; border: 1px solid #000; padding: 4px 8px;">Annex "A"</div>
-                </div>
-                
-                ${form.showLogoInPrint && skProfile?.logo ? `
-                  <div style="width: 100%; text-align: center; margin-bottom: 8px;">
-                    <img src="${skProfile.logo}" alt="Barangay Logo" style="width: 0.9in; height: 0.9in; object-fit: cover;" />
-                  </div>
-                ` : ''}
-                
-                <div style="text-align: center; line-height: 1.2; margin-bottom: 8px;">
-                  <div style="font-size: 16pt; font-weight: bold; margin-bottom: 4px;">
-                    <span>Barangay </span>
-                    <span style="border-bottom: 1px solid #000; display: inline-block; min-width: 2.8in;">${skProfile?.barangay || '\u00A0'}</span>
-                  </div>
-                  <div style="font-size: 16pt; font-weight: bold;">Sangguniang Kabataan</div>
-                </div>
-                
-                <div style="text-align: center; margin-bottom: 8px;">
-                  <div style="font-size: 10pt; font-weight: 600;">COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP)</div>
-                </div>
-                
-                <div style="font-size: 9pt; margin-bottom: 4px;">
-                  <div style="display: flex; align-items: center; margin-bottom: 4px;">
-                    <span style="margin-right: 8px;">Region:</span>
-                    <span style="border-bottom: 1px solid #000; display: inline-block; width: 1.6in;">${skProfile?.region || '\u00A0'}</span>
-                  </div>
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; align-items: center;">
-                      <span style="margin-right: 8px;">Province:</span>
-                      <span style="border-bottom: 1px solid #000; display: inline-block; width: 1.9in;">${skProfile?.province || '\u00A0'}</span>
-                    </div>
-                    <div style="display: flex; align-items: center; margin-left: 0.5in;">
-                      <span style="margin-right: 8px;">City/Municipality:</span>
-                      <span style="border-bottom: 1px solid #000; display: inline-block; width: 2.2in;">${skProfile?.city || '\u00A0'}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div style="text-align: center; font-size: 9pt; margin: 8px 0;">
-                  <span>COMPREHENSIVE BARANGAY YOUTH DEVELOPMENT PLAN (CBYDP) CY</span>
-                  <span style="border-bottom: 1px solid #000; display: inline-block; width: 0.6in; margin: 0 4px;">${skProfile?.skTermStart || '\u00A0'}</span>
-                  <span>-</span>
-                  <span style="border-bottom: 1px solid #000; display: inline-block; width: 0.6in; margin-left: 4px;">${skProfile?.skTermEnd || '\u00A0'}</span>
-                </div>
-              </div>
-              
-              <!-- Center of Participation -->
-              <div style="margin-bottom: 12px;">
-                <div style="font-size: 9pt; margin-bottom: 4px;">
-                  <span style="font-weight: 600;">CENTER OF PARTICIPATION:</span>
-                  <span style="border-bottom: 1px solid #000; display: inline-block; width: 3.0in; margin-left: 4px;">${center.name || '\u00A0'}</span>
-                </div>
-                <div style="font-size: 9pt; margin-bottom: 8px;">
-                  <div style="margin-bottom: 4px;">Agenda Statement:</div>
-                  <div style="border-bottom: 1px solid #000; min-height: 0.25in;">${center.agenda || '\u00A0'}</div>
-                </div>
-              </div>
-              
-              ${totalPages > 1 ? `
-                <div style="font-size: 9pt; text-align: right; margin: 8px 0;">
-                  Page ${pageNum + 1} of ${totalPages}
-                </div>
-              ` : ''}
-              
-              <!-- Table -->
-              <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #000;">
-                <thead>
-                  <tr>
-                    <th style="width: 1.2in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Youth Development Concern</th>
-                    <th style="width: 1.4in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Objective</th>
-                    <th style="width: 1.3in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Performance Indicator</th>
-                    <th style="width: 0.9in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Target</th>
-                    <th style="width: 0.9in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Target</th>
-                    <th style="width: 0.9in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Target</th>
-                    <th style="width: 3.0in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">PPAs</th>
-                    <th style="width: 1.2in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Expenses</th>
-                    <th style="width: 1.1in; border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold; background-color: #f0f0f0; font-size: 9pt;">Person Responsible</th>
-                  </tr>
-                  <tr>
-                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
-                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
-                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
-                    <th style="border: 1px solid #000; padding: 4px; text-align: center; font-size: 9pt;">[Year 1]</th>
-                    <th style="border: 1px solid #000; padding: 4px; text-align: center; font-size: 9pt;">[Year 2]</th>
-                    <th style="border: 1px solid #000; padding: 4px; text-align: center; font-size: 9pt;">[Year 3]</th>
-                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
-                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
-                    <th style="border: 1px solid #000; padding: 4px; font-size: 9pt;"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${pageRows.map((project, pi) => `
-                    <tr>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.concern}</td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.objective}</td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.indicator}</td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.target1}</td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.target2}</td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.target3}</td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">
-                        <div>
-                          ${(project.programs || []).filter(p => p.trim()).length > 0 ? `
-                            <div style="border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">
-                              <div><span style="font-weight: 600;">Programs:</span></div>
-                              <ul style="list-style-type: disc; list-style-position: inside; margin-left: 8px; margin-top: 4px;">
-                                ${(project.programs || []).filter(p => p.trim()).map(program => `<li style="font-size: 9pt;">${program}</li>`).join('')}
-                              </ul>
-                            </div>
-                          ` : ''}
-                          ${(project.projects || []).filter(p => p.trim()).length > 0 ? `
-                            <div style="border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">
-                              <div><span style="font-weight: 600;">Projects:</span></div>
-                              <ul style="list-style-type: disc; list-style-position: inside; margin-left: 8px; margin-top: 4px;">
-                                ${(project.projects || []).filter(p => p.trim()).map(projectItem => `<li style="font-size: 9pt;">${projectItem}</li>`).join('')}
-                              </ul>
-                            </div>
-                          ` : ''}
-                          ${(project.actions || []).filter(p => p.trim()).length > 0 ? `
-                            <div style="border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">
-                              <div><span style="font-weight: 600;">Actions:</span></div>
-                              <ul style="list-style-type: disc; list-style-position: inside; margin-left: 8px; margin-top: 4px;">
-                                ${(project.actions || []).filter(p => p.trim()).map(action => `<li style="font-size: 9pt;">${action}</li>`).join('')}
-                              </ul>
-                            </div>
-                          ` : ''}
-                          ${(project.programs || []).filter(p => p.trim()).length === 0 &&
-                            (project.projects || []).filter(p => p.trim()).length === 0 &&
-                            (project.actions || []).filter(p => p.trim()).length === 0 ? '\u00A0' : ''}
-                        </div>
-                      </td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">
-                        ${(project.expenses || []).map(expense => `
-                          <div style="font-size: 9pt;">${expense.description}: ₱${expense.cost}</div>
-                        `).join('')}
-                      </td>
-                      <td style="border: 1px solid #000; padding: 4px; vertical-align: top; font-size: 9pt;">${project.responsible}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-              
-              <!-- Prepared by -->
-              <div style="margin-top: 12px; page-break-inside: avoid;">
-                <div style="text-align: center; font-size: 9pt; font-weight: 600; margin-bottom: 8px;">Prepared by:</div>
-                <div style="display: flex; justify-content: space-around; text-align: center;">
-                  <div style="width: 3in;">
-                    <div style="border-bottom: 1px solid #000; height: 0.25in;">
-                      <div style="font-size: 9pt;">${form.skMembers.find(m => m.position === 'SK Secretary')?.name || ''}</div>
-                    </div>
-                    <div style="font-size: 9pt; margin-top: 4px;">SK Secretary</div>
-                  </div>
-                  <div style="width: 3in;">
-                    <div style="border-bottom: 1px solid #000; height: 0.25in;">
-                      <div style="font-size: 9pt;">${form.skMembers.find(m => m.position === 'SK Chairperson')?.name || ''}</div>
-                    </div>
-                    <div style="font-size: 9pt; margin-top: 4px;">SK Chairperson</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-        });
+      // Load the template
+      const response = await fetch('/templates/cbydp_template.docx');
+      const content = await response.arrayBuffer();
+      
+      // Generate docx using Docxtemplater
+      const zip = new PizZip(content);
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: '[[', end: ']]' },
       });
       
-      return content;
-    };
-    
-    const wordContent = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset='utf-8'>
-        <title>${title}</title>
-        <style>
-          @page { 
-            size: 13in 8.5in landscape; 
-            margin: 8mm;
-          }
-          body { 
-            font-family: 'Calibri', Arial, sans-serif; 
-            font-size: 12pt; 
-            margin: 0; 
-            padding: 0;
-            background: white;
-          }
-        </style>
-      </head>
-      <body>
-        ${generateWordDocument()}
-      </body>
-      </html>
-    `;
-    
-    // Create blob and download
-    const blob = new Blob([wordContent], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${title}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      doc.setData(data);
+      doc.render();
+      
+      // Get the generated docx as blob
+      const docxBlob = doc.getZip().generate({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      
+      // Open the docx in a new window for preview
+      const docxUrl = URL.createObjectURL(docxBlob);
+      const newWindow = window.open(docxUrl, '_blank');
+      if (newWindow) {
+        newWindow.focus();
+        // Clean up the URL after a delay
+        setTimeout(() => {
+          URL.revokeObjectURL(docxUrl);
+        }, 10000);
+      }
+      
+    } catch (error) {
+      console.error('Error generating Word preview:', error);
+      alert('Error generating Word preview. Please try again.');
+    }
   };
+
 
   const handleRefresh = async () => {
     console.log('Manual refresh requested');
@@ -1767,14 +1493,7 @@ const CBYDP: React.FC = () => {
                    className="btn-primary flex items-center"
                  >
                    <Printer className="h-4 w-4 mr-2" />
-                   Print
-                 </button>
-                 <button
-                   onClick={exportToWord}
-                   className="btn-secondary flex items-center"
-                 >
-                   <Download className="h-4 w-4 mr-2" />
-                   Export to Word
+                   Preview Word Template
                  </button>
                  <button
                    onClick={async () => {
@@ -1793,11 +1512,21 @@ const CBYDP: React.FC = () => {
                    className="btn-secondary flex items-center"
                  >
                    <Download className="h-4 w-4 mr-2" />
-                   Export to Word (Template)
+                   Export to Word
                  </button>
                </div>
              </div>
-                                                                                                      <div ref={printRef} className="print-content" style={{ width: '13in', minHeight: '8.5in' }}>
+             
+             <div className="border rounded-lg overflow-hidden bg-white">
+               <div ref={printRef} className="print-content" style={{ 
+                 width: '100%', 
+                 maxWidth: '100%',
+                 height: '600px',
+                 overflow: 'auto',
+                 padding: '20px',
+                 fontSize: '12px',
+                 lineHeight: '1.4'
+               }}>
                                                       
                                                            {/* New Multipage print structure */}
                                                                    {form.centers.map((center, ci) => {
@@ -2129,10 +1858,11 @@ const CBYDP: React.FC = () => {
               </div>
             </div>
           </div>
-             ) : (
-         <div className="space-y-6">
-                       {/* Workflow Status Notices */}
-            {form.status === 'not_initiated' && (
+        </div>
+      ) : (
+        <div className="space-y-6">
+           {/* Status Messages */}
+           {form.status === 'not_initiated' && (
               <div className="mb-6 p-4 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg flex items-center">
                 <AlertCircle className="h-5 w-5 mr-2" />
                 CBYDP has not been initiated yet. The SK Chairperson must initiate the CBYDP to begin the process.
@@ -2167,8 +1897,7 @@ const CBYDP: React.FC = () => {
              </div>
            )}
 
-
-
+         <div className="space-y-6">
           {/* Centers of Participation */}
           <div className="space-y-4">
             {form.centers.map((center, centerIdx) => (
@@ -2497,8 +2226,9 @@ const CBYDP: React.FC = () => {
             </button>
              )}
           </div>
-                 </div>
-       )}
+         </div>
+        </div>
+      )}
 
        {/* KK Approval Modal */}
        {showKKApprovalModal && (

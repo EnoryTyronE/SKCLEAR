@@ -60,6 +60,13 @@ export function mapCBYDPToTemplate(payload: any) {
   }
   console.log('Member rows:', memberRows);
   
+  // Find officers with fallbacks
+  const secretary = (payload?.form?.skMembers || []).find((m: any) => m.position === 'SK Secretary');
+  const chairperson = (payload?.form?.skMembers || []).find((m: any) => m.position === 'SK Chairperson');
+  const treasurer = (payload?.form?.skMembers || []).find((m: any) => m.position === 'SK Treasurer');
+  
+  console.log('Officers found:', { secretary, chairperson, treasurer });
+  
   const result = {
     logo: payload?.skProfile?.logo || '',
     barangay: payload?.skProfile?.barangay || '',
@@ -88,11 +95,11 @@ export function mapCBYDPToTemplate(payload: any) {
       })),
     })),
     prepared_by: {
-      secretary: (payload?.form?.skMembers || []).find((m: any) => m.position === 'SK Secretary')?.name || '',
-      chairperson: (payload?.form?.skMembers || []).find((m: any) => m.position === 'SK Chairperson')?.name || '',
-      treasurer: (payload?.form?.skMembers || []).find((m: any) => m.position === 'SK Treasurer')?.name || '',
+      secretary: secretary?.name || 'Secretary Name',
+      chairperson: chairperson?.name || 'Chairperson Name',
+      treasurer: treasurer?.name || 'Treasurer Name',
     },
-    sk_federation_president: (payload?.skProfile?.federationPresident || ''),
+    sk_federation_president: (payload?.skProfile?.federationPresident || 'Federation President Name'),
   };
   
   console.log('Final mapped data:', result);
