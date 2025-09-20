@@ -334,6 +334,24 @@ const ABYIP: React.FC = () => {
     return formatNumber(value);
   };
 
+  // Generate year options based on SK setup
+  const generateYearOptions = () => {
+    if (!skProfile?.skTermStart || !skProfile?.skTermEnd) {
+      // Fallback to current year + 2 years if SK setup is not available
+      return Array.from({ length: 3 }, (_, i) => {
+        const year = new Date().getFullYear() + i;
+        return year.toString();
+      });
+    }
+    
+    // Use SK Profile's term start and end years
+    const years = [];
+    for (let year = skProfile.skTermStart; year <= skProfile.skTermEnd; year++) {
+      years.push(year.toString());
+    }
+    return years;
+  };
+
   // Budget calculation helper functions
   const calculateProjectTotal = (budget: { mooe: string; co: string; ps: string; total: string }) => {
     // Handle both raw values (during typing) and formatted values (after blur)
@@ -850,11 +868,10 @@ const ABYIP: React.FC = () => {
             className="border border-blue-300 rounded-md px-3 py-1 text-sm"
           >
             <option value="">Select a year...</option>
-            {Array.from({ length: 3 }, (_, i) => {
-              const year = new Date().getFullYear() + i;
-              const hasABYIP = allABYIPs.some(abyip => abyip.year === year.toString());
+            {generateYearOptions().map((year) => {
+              const hasABYIP = allABYIPs.some(abyip => abyip.year === year);
               return (
-                <option key={year} value={year.toString()}>
+                <option key={year} value={year}>
                   {year} {hasABYIP ? '(Created)' : '(Available)'}
                 </option>
               );
