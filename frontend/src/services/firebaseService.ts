@@ -517,3 +517,117 @@ export const clearAllABYIPs = async () => {
   }
 };
 
+// SK Annual Budget Management
+export const createSKAnnualBudget = async (budgetData: any) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    // Check if budget already exists for this year
+    const existingBudget = await getSKAnnualBudget(budgetData.year);
+    if (existingBudget) {
+      throw new Error(`SK Annual Budget for year ${budgetData.year} already exists`);
+    }
+
+    const docRef = await addDoc(collection(db, 'sk_annual_budgets'), {
+      ...budgetData,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating SK Annual Budget:', error);
+    throw error;
+  }
+};
+
+export const getSKAnnualBudget = async (year: string) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    console.log('Getting SK Annual Budget for year:', year, 'user:', user.uid);
+
+    // Get all budgets for the user, then filter by year
+    const q = query(
+      collection(db, 'sk_annual_budgets'),
+      where('createdBy', '==', user.uid)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log('SK Annual Budget query result:', querySnapshot.docs.length, 'documents found');
+    
+    // Filter by year in JavaScript
+    const budgetForYear = querySnapshot.docs.find(doc => {
+      const data = doc.data();
+      return data.year === year;
+    });
+    
+    if (budgetForYear) {
+      const data = { id: budgetForYear.id, ...budgetForYear.data() };
+      console.log('SK Annual Budget data retrieved:', data);
+      return data;
+    }
+    console.log('No SK Annual Budget found for year:', year);
+    return null;
+  } catch (error) {
+    console.error('Error getting SK Annual Budget:', error);
+    throw error;
+  }
+};
+
+export const getAllSKAnnualBudgets = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    const q = query(
+      collection(db, 'sk_annual_budgets'),
+      where('createdBy', '==', user.uid)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const budgets = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    // Sort by year in descending order
+    budgets.sort((a, b) => {
+      const yearA = parseInt((a as any).year) || 0;
+      const yearB = parseInt((b as any).year) || 0;
+      return yearB - yearA;
+    });
+    
+    console.log('All SK Annual Budgets for user:', budgets);
+    return budgets;
+  } catch (error) {
+    console.error('Error getting all SK Annual Budgets:', error);
+    throw error;
+  }
+};
+
+export const updateSKAnnualBudget = async (budgetId: string, budgetData: any) => {
+  try {
+    await updateDoc(doc(db, 'sk_annual_budgets', budgetId), {
+      ...budgetData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating SK Annual Budget:', error);
+    throw error;
+  }
+};
+
+export const deleteSKAnnualBudget = async (budgetId: string) => {
+  try {
+    await deleteDoc(doc(db, 'sk_annual_budgets', budgetId));
+    return true;
+  } catch (error) {
+    console.error('Error deleting SK Annual Budget:', error);
+    throw error;
+  }
+};
+
