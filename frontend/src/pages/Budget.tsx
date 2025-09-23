@@ -787,22 +787,63 @@ const Budget: React.FC = () => {
                 onChange={(e) => {
                   const newYear = e.target.value;
                   setSelectedBudgetYear(newYear);
-                  // Load budget for the new year
-                  if (newYear) {
-                    loadBudgetByYear(parseInt(newYear));
-                  }
+                  // Reset editing state when changing years
+                  setIsEditing(false);
+                  setCurrentBudget(null);
+                  setPreview(false);
+                  // Don't automatically load budget - let user choose to create or view
                 }}
                 className="px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select a year</option>
-                {generateYearOptions().map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
+                {generateYearOptions().map((year) => {
+                  const budgetExists = budgets.some(budget => budget.year === year);
+                  return (
+                    <option key={year} value={year}>
+                      {year} ({budgetExists ? 'Created' : 'Available'})
+                    </option>
+                  );
+                })}
               </select>
               
-              {/* Initiate button removed from here (initiation handled in action bar) */}
+              {/* Create Budget Button - Only show when no budget exists for selected year */}
+              {selectedBudgetYear && !budgets.some(budget => budget.year === selectedBudgetYear) && (
+                <button
+                  onClick={async () => {
+                    if (!selectedBudgetYear) return;
+                    const updatedBudget = {
+                      ...defaultBudget,
+                      year: selectedBudgetYear,
+                      status: 'open_for_editing' as const,
+                      initiatedBy: user?.name,
+                      initiatedAt: new Date(),
+                      barangay_name: skProfile?.barangay || '',
+                      city_municipality: skProfile?.city || '',
+                      province: skProfile?.province || ''
+                    };
+                    setCurrentBudget(updatedBudget);
+                    setIsEditing(true);
+                    setIsCreating(true);
+                  }}
+                  className="btn-primary"
+                >
+                  Create Budget
+                </button>
+              )}
+
+              {/* View Budget Button - Only show when budget exists for selected year */}
+              {selectedBudgetYear && budgets.some(budget => budget.year === selectedBudgetYear) && (
+                <button
+                  onClick={() => {
+                    if (selectedBudgetYear) {
+                      loadBudgetByYear(parseInt(selectedBudgetYear));
+                    }
+                  }}
+                  className="btn-secondary"
+                >
+                  View Budget
+                </button>
+              )}
             </div>
 
             {/* Budget Status for Selected Year - Inside Management */}
@@ -911,42 +952,6 @@ const Budget: React.FC = () => {
               </div>
             )}
 
-            {/* Budget Status Overview - Show all budgets */}
-            {budgets.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {budgets.map((budget) => (
-                  <div key={budget.id} className="bg-white p-4 rounded-lg border">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-semibold text-gray-900">Budget {budget.year}</h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(budget.status)}`}>
-                        {budget.status.replace('_', ' ').toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">
-                      Total: ₱{formatNumber(budget.total_budget.toString())}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => loadBudgetByYear(parseInt(budget.year))}
-                        className="btn-secondary text-xs flex items-center"
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </button>
-                      {budget.status === 'open_for_editing' && (
-                        <button
-                          onClick={() => loadBudgetByYear(parseInt(budget.year))}
-                          className="btn-primary text-xs flex items-center"
-                        >
-                          <Save className="h-3 w-3 mr-1" />
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </>
         )}
       </div>
@@ -1156,6 +1161,21 @@ const Budget: React.FC = () => {
               Reset All Budgets
             </button>
             
+            {/* Back to List Button - Show when editing */}
+            {isEditing && (
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setCurrentBudget(null);
+                  setPreview(false);
+                }}
+                className="btn-secondary flex items-center"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Back to List
+              </button>
+            )}
+            
             {/* Show Logo in Printout Checkbox */}
             <div className="flex items-center ml-4">
               <input
@@ -1170,21 +1190,44 @@ const Budget: React.FC = () => {
             </div>
           </div>
 
-          {/* Main Content - Hidden when preview is active */}
-          {!preview && (
+          {/* Main Content - Hidden when preview is active or not editing */}
+          {!preview && isEditing && (
             <>
-              {/* Informational Message - Similar to ABYIP */}
-          {currentBudget && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center">
-                <span className="text-blue-600 mr-2">ℹ️</span>
-                <span className="text-sm text-blue-800">
-                  Budget for {currentBudget.year} is {currentBudget.status === 'open_for_editing' ? 'open for editing' : currentBudget.status}. 
-                  {currentBudget.status === 'open_for_editing' ? ' All SK members can add and edit budget items.' : ''}
-                </span>
-              </div>
-            </div>
-          )}
+              {/* Budget Status Messages - Similar to ABYIP */}
+              {currentBudget?.status === 'not_initiated' && (
+                <div className="mb-6 p-4 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg flex items-center">
+                  <Clock className="h-5 w-5 mr-2" />
+                  Budget for {currentBudget.year} has not been initiated yet. The SK Chairperson must initiate the budget to begin the process.
+                </div>
+              )}
+
+              {currentBudget?.status === 'open_for_editing' && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg flex items-center">
+                  <CheckCircle className="h-5 w-5 mr-2" />
+                  Budget for {currentBudget.year} is open for editing. All SK members can add and edit budget items.
+                </div>
+              )}
+
+              {currentBudget?.status === 'pending_approval' && (
+                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg flex items-center">
+                  <Clock className="h-5 w-5 mr-2" />
+                  Budget for {currentBudget.year} is pending approval. The SK Chairperson must review and approve the budget.
+                </div>
+              )}
+
+              {currentBudget?.status === 'approved' && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center">
+                  <CheckCircle className="h-5 w-5 mr-2" />
+                  Budget for {currentBudget.year} has been approved and is now read-only.
+                </div>
+              )}
+
+              {currentBudget?.status === 'rejected' && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center">
+                  <X className="h-5 w-5 mr-2" />
+                  Budget for {currentBudget.year} was rejected. The SK Chairperson can re-initiate the budget to start the process again.
+                </div>
+              )}
 
           {/* Budget Header Information */}
           <div className="card p-6">

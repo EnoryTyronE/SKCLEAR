@@ -968,47 +968,6 @@ const ABYIP: React.FC = () => {
         {/* Additional Details - Toggleable */}
         {showManagement && (
           <div className="space-y-4">
-            {/* All ABYIPs Overview */}
-            {allABYIPs.length > 0 && (
-              <div className="bg-white border border-blue-200 rounded-lg p-4">
-                <h5 className="text-sm font-medium text-blue-800 mb-3">All ABYIPs Overview</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {allABYIPs.map((abyip) => (
-                    <div key={abyip.id} className="bg-gray-50 border border-gray-200 rounded p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-medium text-gray-700">Year: {abyip.year}</div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          abyip.status === 'not_initiated' ? 'bg-gray-100 text-gray-800' :
-                          abyip.status === 'open_for_editing' ? 'bg-blue-100 text-blue-800' :
-                          abyip.status === 'pending_kk_approval' ? 'bg-yellow-100 text-yellow-800' :
-                          abyip.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {abyip.status === 'not_initiated' ? 'Not Initiated' :
-                           abyip.status === 'open_for_editing' ? 'Open' :
-                           abyip.status === 'pending_kk_approval' ? 'Pending' :
-                           abyip.status === 'approved' ? 'Approved' : 'Rejected'}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600 mb-2">
-                        Created: {abyip.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
-                      </div>
-                      <div className="text-sm text-gray-600 mb-3">Centers: {abyip.centers?.length || 0}</div>
-                      <button
-                        onClick={() => {
-                          setSelectedABYIPYear(abyip.year);
-                          setForm(prev => ({ ...prev, year: abyip.year }));
-                          loadExistingABYIP(abyip.year);
-                        }}
-                        className="w-full text-xs bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded transition-colors"
-                      >
-                        Load This ABYIP
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -1066,8 +1025,9 @@ const ABYIP: React.FC = () => {
       )}
 
 
-      {/* Action Buttons */}
-      <div className="mb-6 flex justify-between items-center">
+      {/* Action Buttons - Only show when editing is open */}
+      {form.isEditingOpen && (
+        <div className="mb-6 flex justify-between items-center">
         <div className="flex space-x-3">
           {/* Initiate ABYIP - Only for Chairperson when not initiated */}
           {user?.role === 'chairperson' && form.status === 'not_initiated' && (
@@ -1160,19 +1120,6 @@ const ABYIP: React.FC = () => {
             >
               <Eye className="h-4 w-4 mr-2" />
               {preview ? 'Edit Mode' : 'Preview'}
-            </button>
-          )}
-
-          {/* Back to List Button - Show when editing is open */}
-          {form.isEditingOpen && (
-            <button
-              onClick={() => {
-                setForm(prev => ({ ...prev, isEditingOpen: false }));
-              }}
-              className="btn-secondary flex items-center"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Back to List
             </button>
           )}
 
@@ -1329,6 +1276,19 @@ const ABYIP: React.FC = () => {
             Reset All ABYIPs
           </button>
 
+          {/* Back to List Button - Show when editing is open */}
+          {form.isEditingOpen && (
+            <button
+              onClick={() => {
+                setForm(prev => ({ ...prev, isEditingOpen: false }));
+                setPreview(false);
+              }}
+              className="btn-secondary flex items-center"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Back to List
+            </button>
+          )}
 
       </div>
 
@@ -1344,6 +1304,7 @@ const ABYIP: React.FC = () => {
           </label>
         </div>
       </div>
+      )}
 
       {preview ? (
         <div className="space-y-6">
@@ -1643,22 +1604,22 @@ const ABYIP: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Workflow Status Notices */}
-          {form.status === 'not_initiated' && (
+          {/* Workflow Status Notices - Only show when editing is open */}
+          {form.isEditingOpen && form.status === 'not_initiated' && (
             <div className="mb-6 p-4 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg flex items-center">
               <AlertCircle className="h-5 w-5 mr-2" />
               ABYIP for {form.year} has not been initiated yet. The SK Chairperson must initiate the ABYIP to begin the process.
             </div>
           )}
 
-            {form.status === 'open_for_editing' && (
+            {form.isEditingOpen && form.status === 'open_for_editing' && (
               <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg flex items-center">
                 <CheckCircle className="h-5 w-5 mr-2" />
                 ABYIP for {form.year} is open for editing. All SK members can add and edit projects.
               </div>
             )}
 
-            {form.status === 'pending_kk_approval' && (
+            {form.isEditingOpen && form.status === 'pending_kk_approval' && (
               <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg flex items-center">
                 <AlertCircle className="h-5 w-5 mr-2" />
                 ABYIP is pending Katipunan ng Kabataan approval. The SK Chairperson must upload proof of KK approval.
@@ -1666,14 +1627,14 @@ const ABYIP: React.FC = () => {
             )}
 
 
-          {form.status === 'approved' && (
+          {form.isEditingOpen && form.status === 'approved' && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center">
               <CheckCircle className="h-5 w-5 mr-2" />
               ABYIP for {form.year} has been approved and is now read-only.
             </div>
           )}
 
-          {form.status === 'rejected' && (
+          {form.isEditingOpen && form.status === 'rejected' && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center">
               <AlertCircle className="h-5 w-5 mr-2" />
               ABYIP for {form.year} was rejected. Reason: {form.rejectionReason}. The SK Chairperson can re-initiate the ABYIP to start the process again.
@@ -1745,7 +1706,7 @@ const ABYIP: React.FC = () => {
           </div>
 
           {/* Centers of Participation */}
-          <div className="space-y-4">
+          <div className="space-y-4 mt-6">
             {form.centers.map((center, centerIdx) => (
               <div key={centerIdx} className="card">
                 <div className="card-header">
@@ -2282,15 +2243,40 @@ const ABYIP: React.FC = () => {
               </p>
               <div className="flex gap-2 justify-center">
                 <button 
-                  onClick={() => {
-                    const currentYear = new Date().getFullYear().toString();
-                    setSelectedABYIPYear(currentYear);
-                    setForm(prev => ({ ...prev, year: currentYear }));
-                    loadExistingABYIP(currentYear);
+                  onClick={async () => {
+                    try {
+                      const yearToUse = selectedABYIPYear || new Date().getFullYear().toString();
+                      const updatedForm = {
+                        ...form,
+                        year: yearToUse,
+                        status: 'not_initiated' as const,
+                        isEditingOpen: true,
+                        centers: [],
+                        skMembers: [],
+                        showLogoInPrint: true
+                      };
+                      setForm(updatedForm);
+                      setSelectedABYIPYear(yearToUse);
+                      
+                      // Create the new ABYIP
+                      setSaving(true);
+                      const id = await createABYIP(updatedForm as any);
+                      setExistingABYIPId(id);
+                      setSaved(true);
+                      setTimeout(() => setSaved(false), 3000);
+                      
+                      // Reload all ABYIPs to update the list
+                      await loadAllABYIPs();
+                    } catch (e: any) {
+                      setError(e?.message || 'Failed to create ABYIP');
+                    } finally {
+                      setSaving(false);
+                    }
                   }}
                   className="btn-primary"
+                  disabled={saving}
                 >
-                  Create ABYIP for {new Date().getFullYear()}
+                  {saving ? 'Creating...' : `Create ABYIP for ${selectedABYIPYear || new Date().getFullYear()}`}
                 </button>
               </div>
             </div>
@@ -2346,22 +2332,31 @@ const ABYIP: React.FC = () => {
                             const templateData = mapABYIPToTemplate(payload);
                             console.log('Template data after mapping:', templateData);
                             
-                            // Export using the template
+                            // Verify template path exists
+                            const templatePath = '/templates/abyip_template.docx';
+                            console.log('Using template path:', templatePath);
+                            
+                            const outputFileName = `ABYIP_${skProfile?.barangay || 'Document'}_${tempForm.year || '2024'}`;
+                            console.log('Output filename:', outputFileName);
+                            
                             await exportDocxFromTemplate({
-                              templatePath: 'abyip_template.docx',
+                              templatePath,
                               data: templateData,
-                              outputFileName: `ABYIP_${tempForm.year}.docx`
+                              outputFileName,
                             });
-                            console.log('=== ABYIP EXPORT COMPLETED ===');
-                          } catch (error) {
-                            console.error('Export error:', error);
-                            setError('Failed to export ABYIP');
+                            
+                            console.log('=== ABYIP EXPORT COMPLETED SUCCESSFULLY ===');
+                            alert('ABYIP document exported successfully!');
+                          } catch (e) {
+                            console.error('ABYIP template export failed', e);
+                            const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+                            alert(`Failed to export ABYIP Word document: ${errorMessage}`);
                           }
                         }}
                         className="btn-secondary flex items-center"
                       >
                         <Download className="h-4 w-4 mr-2" />
-                        Export
+                        Export to Word
                       </button>
                       <button 
                         onClick={async () => {
