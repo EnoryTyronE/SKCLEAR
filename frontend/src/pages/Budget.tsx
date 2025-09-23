@@ -44,7 +44,10 @@ interface SKAnnualBudget {
   city_municipality: string;
   province: string;
   sk_resolution_no: string;
+  sk_resolution_series?: string;
+  sk_resolution_date?: Date;
   barangay_appropriation_ordinance_no: string;
+  ordinance_series?: string;
   total_budget: number;
   barangay_budget_percentage: number;
   status: 'not_initiated' | 'open_for_editing' | 'pending_approval' | 'approved' | 'rejected';
@@ -434,145 +437,309 @@ const Budget: React.FC = () => {
     const totalPrograms = currentBudget.programs.reduce((sum, program) => sum + program.total_amount, 0);
     const balance = totalReceipts - totalPrograms;
     
-    // Get member names - use current user if they are treasurer/chairperson, otherwise use placeholders
-    const treasurer = user?.role === 'treasurer' ? { name: user.name || 'Treasurer Name' } : { name: 'Treasurer Name' };
-    const chairperson = user?.role === 'chairperson' ? { name: user.name || 'Chairperson Name' } : { name: 'Chairperson Name' };
+    // Format date for resolution
+    const resolutionDate = currentBudget.sk_resolution_date ? new Date(currentBudget.sk_resolution_date).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    }) : '_____________';
     
     return (
-      <div className="bg-white border rounded-lg p-6">
-        <div className="text-center mb-6">
-          <div className="w-20 h-20 mx-auto mb-4 border border-gray-300 flex items-center justify-center bg-gray-50">
-            {skProfile?.logo ? (
-              <img src={skProfile.logo} alt="Logo" className="max-w-full max-h-full" />
-            ) : (
-              <span className="text-gray-500">LOGO</span>
-            )}
+      <div className="bg-white p-8 max-w-5xl mx-auto" style={{ fontFamily: 'Arial, sans-serif' }}>
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="text-right mb-2">
+            <div className="text-sm border border-gray-800 p-2 inline-block">
+              <div>Annex "C"</div>
+              <div>Sample SK Annual Budget</div>
+              <div>(COA HFTSK page 112)</div>
+            </div>
           </div>
-          <div>Province of {skProfile?.province || '_____'}</div>
-          <div>City of {skProfile?.city || '_____'}</div>
-          <div>Barangay {skProfile?.barangay || '_____'}</div>
-          <div className="font-bold text-lg mt-2">OFFICE OF THE SANGGUNIANG KABATAAN</div>
-          <div className="font-bold text-base mt-2">SK Approved Annual Budget for CY {currentBudget.year}</div>
+          
+          <div className="text-center mb-4">
+            <div className="text-sm mb-2">
+              {skProfile?.logo ? (
+                <img src={skProfile.logo} alt="Barangay Logo" className="w-16 h-16 mx-auto mb-2" />
+              ) : (
+                <span>(Barangay Logo)</span>
+              )}
+            </div>
+            <div className="text-sm mb-1">Province of <span className="underline">{skProfile?.province || '_____________'}</span></div>
+            <div className="text-sm mb-1">City of <span className="underline">{skProfile?.city || '_____________'}</span></div>
+            <div className="text-sm mb-4">Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span></div>
+          </div>
+          
+          <div className="text-lg font-bold mb-2">OFFICE OF THE SANGGUNIANG KABATAAN</div>
+          <div className="text-lg font-bold mb-6">SK Approved Annual Budget for CY <span className="underline">{currentBudget.year}</span></div>
         </div>
-        
-        <div className="mb-6 text-justify">
-          On _____, the SK of Barangay {skProfile?.barangay || '_____'} (City/Municipality), through SK Resolution No. {currentBudget.sk_resolution_no || '_____'} S-{currentBudget.year}, has approved the SK Annual Budget for CY {currentBudget.year}, amounting to (₱{formatNumber(currentBudget.total_budget)}) equivalent to {currentBudget.barangay_budget_percentage}% of the approved budget of Barangay {skProfile?.barangay || '_____'} (City/Municipality), per Barangay Appropriation Ordinance No. {currentBudget.barangay_appropriation_ordinance_no || '_____'}, S-{currentBudget.year}.
+
+        {/* Approval Statement */}
+        <div className="mb-8 text-sm leading-relaxed">
+          <p>
+            On <span className="underline">{resolutionDate}</span>, the SK of Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span> (City/Municipality), 
+            through SK Resolution No. <span className="underline">{currentBudget.sk_resolution_no || '_____________'}</span> S-<span className="underline">{currentBudget.sk_resolution_series || currentBudget.year}</span>, has approved the SK Annual Budget for CY {currentBudget.year}, 
+            amounting to (P <span className="underline">{formatNumber(currentBudget.total_budget)}</span>) equivalent to {currentBudget.barangay_budget_percentage || 10}% of the approved budget of Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span> (City/Municipality), 
+            per Barangay Appropriation Ordinance No. <span className="underline">{currentBudget.barangay_appropriation_ordinance_no || '_____________'}</span>, S-<span className="underline">{currentBudget.ordinance_series || currentBudget.year}</span>.
+          </p>
         </div>
-        
-        <table className="w-full border-collapse border border-gray-800 text-xs">
-          <thead>
-            <tr>
-              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '15%'}}>Program</th>
-              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '35%'}}>PROJECT/ACTIVITIES<br/>(Object of Expenditures)</th>
-              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '15%'}}>Duration of<br/>Projects/Activities</th>
-              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '20%'}}>Expenditure Class</th>
-              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '15%'}}>Amount</th>
-            </tr>
-            <tr>
-              <th className="border border-gray-800 p-2 bg-gray-100"></th>
-              <th className="border border-gray-800 p-2 bg-gray-100"></th>
-              <th className="border border-gray-800 p-2 bg-gray-100"></th>
-              <th className="border border-gray-800 p-2 bg-gray-100 text-center">MOOE</th>
-              <th className="border border-gray-800 p-2 bg-gray-100 text-center">CO</th>
-              <th className="border border-gray-800 p-2 bg-gray-100"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="bg-gray-200">
-              <td colSpan={6} className="border border-gray-800 p-2 font-bold">Part I. Receipts Program</td>
-            </tr>
-            {currentBudget.receipts.map((receipt, index) => (
-              <tr key={index}>
-                <td className="border border-gray-800 p-2"></td>
-                <td className="border border-gray-800 p-2">{receipt.source_description}</td>
-                <td className="border border-gray-800 p-2">{receipt.duration}</td>
-                <td className="border border-gray-800 p-2 text-right">₱{formatNumber(receipt.mooe_amount)}</td>
-                <td className="border border-gray-800 p-2 text-right">₱{formatNumber(receipt.co_amount)}</td>
-                <td className="border border-gray-800 p-2 text-right">₱{formatNumber(receipt.total_amount)}</td>
+
+        {/* Budget Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse border border-gray-800 text-sm" style={{ fontSize: '12px' }}>
+            <thead>
+              <tr>
+                <th className="border border-gray-800 p-2 text-left font-bold" style={{ width: '15%' }}>Program</th>
+                <th className="border border-gray-800 p-2 text-left font-bold" style={{ width: '35%' }}>PROJECT/ACTIVITIES (Object of Expenditures)</th>
+                <th className="border border-gray-800 p-2 text-center font-bold" style={{ width: '15%' }}>Duration of Projects/Activities</th>
+                <th className="border border-gray-800 p-2 text-center font-bold" style={{ width: '17.5%' }}>Expenditure Class</th>
+                <th className="border border-gray-800 p-2 text-center font-bold" style={{ width: '17.5%' }}>Amount</th>
               </tr>
-            ))}
-            <tr className="bg-gray-100 font-bold">
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2">TOTAL ESTIMATED FUNDS AVAILABLE FOR BUDGET</td>
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.co_amount, 0))}</td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(totalReceipts)}</td>
-            </tr>
-            
-            <tr className="bg-gray-200">
-              <td colSpan={6} className="border border-gray-800 p-2 font-bold">Part II. Expenditure Program</td>
-            </tr>
-            
-            {currentBudget.programs.map((program, programIndex) => (
-              <React.Fragment key={programIndex}>
-                <tr className="bg-gray-200">
-                  <td colSpan={6} className="border border-gray-800 p-2 font-bold">
-                    {program.program_name === 'general_administration' ? 'A. General Administration Program' : 
-                     program.program_name === 'youth_development' ? 'B. SK Youth Development and Empowerment Program' : 
-                     'C. Other Programs'}
-                  </td>
-                </tr>
-                {program.items.map((item, itemIndex) => (
-                  <tr key={itemIndex}>
-                    <td className="border border-gray-800 p-2">{itemIndex + 1}</td>
-                    <td className="border border-gray-800 p-2">{item.item_description}</td>
-                    <td className="border border-gray-800 p-2">{item.duration}</td>
-                    <td className="border border-gray-800 p-2 text-right">{item.expenditure_class === 'MOOE' ? `₱${formatNumber(item.amount)}` : ''}</td>
-                    <td className="border border-gray-800 p-2 text-right">{item.expenditure_class === 'CO' ? `₱${formatNumber(item.amount)}` : ''}</td>
-                    <td className="border border-gray-800 p-2 text-right">₱{formatNumber(item.amount)}</td>
-                  </tr>
+              <tr>
+                <th className="border border-gray-800 p-1"></th>
+                <th className="border border-gray-800 p-1"></th>
+                <th className="border border-gray-800 p-1"></th>
+                <th className="border border-gray-800 p-1 text-center font-bold">MOOE</th>
+                <th className="border border-gray-800 p-1 text-center font-bold">CO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Part I: Receipts */}
+              <tr>
+                <td className="border border-gray-800 p-2 font-bold">Part I. Receipts Program</td>
+                <td className="border border-gray-800 p-2">
+                  Ten percent ({currentBudget.barangay_budget_percentage || 10}%) of the general fund of the Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span> City/Municipality of <span className="underline">{skProfile?.city || '_____________'}</span>
+                </td>
+                <td className="border border-gray-800 p-2 text-center">January - December</td>
+                <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
+                <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.co_amount, 0))}</td>
+              </tr>
+              
+              {/* Total Receipts */}
+              <tr>
+                <td colSpan={2} className="border border-gray-800 p-2 font-bold uppercase">TOTAL ESTIMATED FUNDS AVAILABLE FOR BUDGET</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.co_amount, 0))}</td>
+              </tr>
+
+              {/* Part II: Expenditure Program */}
+              <tr>
+                <td className="border border-gray-800 p-2 font-bold">Part II. Expenditure Program</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+              </tr>
+
+              {/* A. General Administration Program */}
+              <tr>
+                <td className="border border-gray-800 p-2 font-bold">A. General Administration Program</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+              </tr>
+
+              {/* Current Operating Expenditures */}
+              <tr>
+                <td className="border border-gray-800 p-2 pl-6">Current Operating Expenditures (COE)</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+              </tr>
+
+              {/* MOOE Items - Dynamic from Budget Input */}
+              <tr>
+                <td className="border border-gray-800 p-2 pl-8">Maintenance and Other Operating Expenses (MOOE)</td>
+                <td className="border border-gray-800 p-2">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'MOOE')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">{item.item_description}</div>
+                    )) || <div>P <span className="underline">_____________</span></div>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'MOOE')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">{item.duration || <span className="underline">_____________</span>}</div>
+                    )) || <span className="underline">_____________</span>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'MOOE')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">P {formatNumber(item.amount)}</div>
+                    )) || <div>P <span className="underline">_____________</span></div>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'MOOE')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">P 0</div>
+                    )) || <div>P <span className="underline">_____________</span></div>}
+                </td>
+              </tr>
+
+              {/* CO Items - Dynamic from Budget Input */}
+              <tr>
+                <td className="border border-gray-800 p-2 pl-8">Capital Outlay (CO)</td>
+                <td className="border border-gray-800 p-2">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'CO')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">{item.item_description}</div>
+                    )) || <div>P <span className="underline">_____________</span></div>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'CO')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">{item.duration || <span className="underline">_____________</span>}</div>
+                    )) || <span className="underline">_____________</span>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'CO')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">P 0</div>
+                    )) || <div>P <span className="underline">_____________</span></div>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_name === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'CO')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">P {formatNumber(item.amount)}</div>
+                    )) || <div>P <span className="underline">_____________</span></div>}
+                </td>
+              </tr>
+
+              {/* Total General Administration */}
+              <tr>
+                <td colSpan={2} className="border border-gray-800 p-2 font-bold">Total General Administration Program</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
+              </tr>
+
+              {/* B. SK Youth Development and Empowerment Program */}
+              <tr>
+                <td className="border border-gray-800 p-2 font-bold">B. SK Youth Development and Empowerment Program</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
+              </tr>
+
+              {/* Dynamic SK Youth Development Programs from Budget Input */}
+              {currentBudget.programs
+                .filter(program => program.program_name === 'youth_development')
+                .map((program, programIndex) => (
+                  program.items.map((item, itemIndex) => (
+                    <tr key={`${programIndex}-${itemIndex}`}>
+                      <td className="border border-gray-800 p-2 pl-6">{itemIndex + 1}. {item.item_name}</td>
+                      <td className="border border-gray-800 p-2">
+                        <div className="font-bold mb-1">{item.item_description}</div>
+                      </td>
+                      <td className="border border-gray-800 p-2 text-center">{item.duration || 'As needed'}</td>
+                      <td className="border border-gray-800 p-2 text-center">
+                        {item.expenditure_class === 'MOOE' ? `P ${formatNumber(item.amount)}` : 'P 0'}
+                      </td>
+                      <td className="border border-gray-800 p-2 text-center">
+                        {item.expenditure_class === 'CO' ? `P ${formatNumber(item.amount)}` : 'P 0'}
+                      </td>
+                    </tr>
+                  ))
                 ))}
-                <tr className="bg-gray-100 font-bold">
-                  <td className="border border-gray-800 p-2"></td>
-                  <td className="border border-gray-800 p-2">
-                    Total {program.program_name === 'general_administration' ? 'General Administration' : 
-                           program.program_name === 'youth_development' ? 'SK Youth Development and Empowerment' : 'Other'} Program
-                  </td>
-                  <td className="border border-gray-800 p-2"></td>
-                  <td className="border border-gray-800 p-2 text-right">₱{formatNumber(program.mooe_total)}</td>
-                  <td className="border border-gray-800 p-2 text-right">₱{formatNumber(program.co_total)}</td>
-                  <td className="border border-gray-800 p-2 text-right">₱{formatNumber(program.total_amount)}</td>
-                </tr>
-              </React.Fragment>
-            ))}
-            
-            <tr className="bg-gray-100 font-bold">
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2">TOTAL EXPENDITURE PROGRAM</td>
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.mooe_total, 0))}</td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.co_total, 0))}</td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(totalPrograms)}</td>
-            </tr>
-            
-            <tr className="bg-gray-100 font-bold">
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2">BALANCE</td>
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2"></td>
-              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(balance)}</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <div className="flex justify-between mt-10">
-          <div className="text-center w-48">
-            <div>Prepared by:</div>
-            <div className="border-b border-gray-800 h-8 mt-2"></div>
-            <div className="mt-2">{treasurer.name}</div>
-            <div>SK Treasurer</div>
+              
+              {/* Show placeholder rows if no youth development programs exist */}
+              {(!currentBudget.programs.find(p => p.program_name === 'youth_development') || 
+                currentBudget.programs.find(p => p.program_name === 'youth_development')?.items.length === 0) && (
+                <>
+                  <tr>
+                    <td className="border border-gray-800 p-2 pl-6">1. <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-800 p-2 pl-6">2. <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-800 p-2 pl-6">3. <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-800 p-2 pl-6">4. <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-800 p-2 pl-6">5. <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
+                  </tr>
+                </>
+              )}
+
+              {/* Total SK Youth Development */}
+              <tr>
+                <td colSpan={2} className="border border-gray-800 p-2 font-bold">Total SK Youth Development and Empowerment Programs</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
+              </tr>
+
+              {/* Total Expenditure Program */}
+              <tr>
+                <td colSpan={2} className="border border-gray-800 p-2 font-bold uppercase">TOTAL EXPENDITURE PROGRAM</td>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.mooe_total, 0))}</td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.co_total, 0))}</td>
+              </tr>
+
+              {/* Balance */}
+              <tr>
+                <td colSpan={4} className="border border-gray-800 p-2 font-bold uppercase">BALANCE</td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(balance)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Signature Blocks */}
+        <div className="mt-12 flex justify-between">
+          <div className="text-center">
+            <div className="mb-2">Prepared by:</div>
+            <div className="border-b border-gray-800 w-48 mb-1"></div>
+            <div className="font-bold">
+              {user?.role === 'treasurer' ? user.name : 'SK Treasurer'}
+            </div>
           </div>
-          <div className="text-center w-48">
-            <div>Noted by:</div>
-            <div className="border-b border-gray-800 h-8 mt-2"></div>
-            <div className="mt-2">{chairperson.name}</div>
-            <div>SK Chairperson</div>
+          <div className="text-center">
+            <div className="mb-2">Noted by:</div>
+            <div className="border-b border-gray-800 w-48 mb-1"></div>
+            <div className="font-bold">
+              {user?.role === 'chairperson' ? user.name : 'SK Chairperson'}
+            </div>
           </div>
         </div>
-        
-        <div className="text-center text-xs italic mt-6">
+
+        {/* Footer Note */}
+        <div className="mt-8 text-xs italic text-gray-600">
           Note: The phrases "Prepared by" and "Noted by", by the SK Treasurer and SK Chairperson, respectively, were added for purposes of submission of the SK Annual Budget to the DILG City/Municipal Field Office.
         </div>
       </div>
@@ -1223,43 +1390,14 @@ const Budget: React.FC = () => {
             <h2 className="text-xl font-semibold mb-4">Budget Information</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Overall Budget Amount</label>
                 <input
-                  type="text"
-                  value={currentBudget?.year || ''}
-                  onChange={(e) => updateBudgetField('year', e.target.value)}
+                  type="number"
+                  value={currentBudget?.total_budget || ''}
+                  onChange={(e) => updateBudgetField('total_budget', parseFloat(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 100000"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Barangay Name</label>
-                <input
-                  type="text"
-                  value={skProfile?.barangay || ''}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                  readOnly
-                />
-                <p className="text-xs text-gray-500 mt-1">Fetched from SK Profile</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">City/Municipality</label>
-                <input
-                  type="text"
-                  value={skProfile?.city || ''}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                  readOnly
-                />
-                <p className="text-xs text-gray-500 mt-1">Fetched from SK Profile</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
-                <input
-                  type="text"
-                  value={skProfile?.province || ''}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                  readOnly
-                />
-                <p className="text-xs text-gray-500 mt-1">Fetched from SK Profile</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">SK Resolution No.</label>
@@ -1267,6 +1405,26 @@ const Budget: React.FC = () => {
                   type="text"
                   value={currentBudget?.sk_resolution_no || ''}
                   onChange={(e) => updateBudgetField('sk_resolution_no', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SK Resolution Series</label>
+                <input
+                  type="text"
+                  value={currentBudget?.sk_resolution_series || ''}
+                  onChange={(e) => updateBudgetField('sk_resolution_series', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 2024"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SK Resolution Approval Date</label>
+                <input
+                  type="date"
+                  value={currentBudget?.sk_resolution_date ? new Date(currentBudget.sk_resolution_date).toISOString().split('T')[0] : ''}
+                  onChange={(e) => updateBudgetField('sk_resolution_date', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1277,6 +1435,17 @@ const Budget: React.FC = () => {
                   value={currentBudget?.barangay_appropriation_ordinance_no || ''}
                   onChange={(e) => updateBudgetField('barangay_appropriation_ordinance_no', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 2024-001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ordinance Series</label>
+                <input
+                  type="text"
+                  value={currentBudget?.ordinance_series || ''}
+                  onChange={(e) => updateBudgetField('ordinance_series', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., 2024"
                 />
               </div>
             </div>
