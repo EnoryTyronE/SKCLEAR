@@ -1163,6 +1163,19 @@ const ABYIP: React.FC = () => {
             </button>
           )}
 
+          {/* Back to List Button - Show when editing is open */}
+          {form.isEditingOpen && (
+            <button
+              onClick={() => {
+                setForm(prev => ({ ...prev, isEditingOpen: false }));
+              }}
+              className="btn-secondary flex items-center"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Back to List
+            </button>
+          )}
+
           {/* Refresh Button - Available to all */}
           <button
             onClick={() => {
@@ -1667,8 +1680,11 @@ const ABYIP: React.FC = () => {
             </div>
           )}
 
-          {/* Yearly Budget */}
-          <div className="card">
+          {/* Main Form Content */}
+          {form.isEditingOpen && (
+            <div>
+            {/* Yearly Budget */}
+            <div className="card">
             <div className="card-header">
               <h3 className="text-lg font-semibold text-gray-900">Budget Information</h3>
             </div>
@@ -2247,6 +2263,129 @@ const ABYIP: React.FC = () => {
             )}
           </div>
         </div>
+          )}</div>
+          
+          )}
+
+      {/* Existing ABYIPs Panel - Similar to Budget page */}
+      {!form.isEditingOpen && (
+        <div className="card p-6 mt-6">
+          <h2 className="text-xl font-semibold mb-4">Existing ABYIPs</h2>
+          {allABYIPs.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No ABYIPs Created Yet
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Create your first Annual Barangay Youth Investment Program to get started.
+              </p>
+              <div className="flex gap-2 justify-center">
+                <button 
+                  onClick={() => {
+                    const currentYear = new Date().getFullYear().toString();
+                    setSelectedABYIPYear(currentYear);
+                    setForm(prev => ({ ...prev, year: currentYear }));
+                    loadExistingABYIP(currentYear);
+                  }}
+                  className="btn-primary"
+                >
+                  Create ABYIP for {new Date().getFullYear()}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {allABYIPs.map((abyip) => (
+                <div key={abyip.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-lg">ABYIP {abyip.year}</h3>
+                      <p className="text-gray-600">
+                        Centers: {abyip.centers?.length || 0} | Projects: {abyip.centers?.reduce((total: number, center: any) => total + (center.projects?.length || 0), 0) || 0}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Total Budget: ₱{formatNumber(abyip.yearlyBudget || '0')} | Status: {abyip.status?.replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          setSelectedABYIPYear(abyip.year);
+                          setForm(prev => ({ ...prev, year: abyip.year, isEditingOpen: true }));
+                          loadExistingABYIP(abyip.year);
+                        }}
+                        className="btn-secondary flex items-center"
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View/Edit
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          try {
+                            // Set the form data for export
+                            const tempForm = { ...abyip };
+                            console.log('=== ABYIP EXPORT STARTED ===');
+                            console.log('ABYIP Form data before export:', tempForm);
+                            console.log('ABYIP SK Profile data:', skProfile);
+                            console.log('ABYIP Current user:', user);
+                            
+                            // Create comprehensive payload with multiple data sources
+                            const payload = {
+                              form: tempForm,
+                              skProfile: skProfile,
+                              user: user,
+                              centers: tempForm.centers || [],
+                              skMembers: tempForm.skMembers || [],
+                              showLogoInPrint: tempForm.showLogoInPrint !== false
+                            };
+                            
+                            console.log('Final export payload:', payload);
+                            
+                            // Use the mapABYIPToTemplate function to format data
+                            const templateData = mapABYIPToTemplate(payload);
+                            console.log('Template data after mapping:', templateData);
+                            
+                            // Export using the template
+                            await exportDocxFromTemplate({
+                              templatePath: 'abyip_template.docx',
+                              data: templateData,
+                              outputFileName: `ABYIP_${tempForm.year}.docx`
+                            });
+                            console.log('=== ABYIP EXPORT COMPLETED ===');
+                          } catch (error) {
+                            console.error('Export error:', error);
+                            setError('Failed to export ABYIP');
+                          }
+                        }}
+                        className="btn-secondary flex items-center"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          if (abyip.id && window.confirm('Are you sure you want to delete this ABYIP?')) {
+                            try {
+                              await deleteABYIP(abyip.id);
+                              loadAllABYIPs();
+                            } catch (error) {
+                              setError('Failed to delete ABYIP');
+                            }
+                          }
+                        }}
+                        className="btn-danger flex items-center"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Project Selection Modal */}
@@ -2368,7 +2507,7 @@ const ABYIP: React.FC = () => {
                 ))}
               </div>
             )}
-
+          
             <div className="flex justify-end gap-2 mt-6">
               <button
                 onClick={() => {
