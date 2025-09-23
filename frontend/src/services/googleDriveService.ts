@@ -411,6 +411,14 @@ class GoogleDriveService {
         const result = await response.json();
         console.log('Upload result:', result);
         
+        // Ensure the file is accessible (set permission to anyone with the link)
+        try {
+          await this.setFilePublic(result.id);
+          console.log('File permissions updated to anyoneWithLink');
+        } catch (permError) {
+          console.warn('Failed to set file permission to public (will rely on authenticated/thumbnail access):', permError);
+        }
+
         // Convert webViewLink to direct download URL for images
         let imageUrl = result.webViewLink;
         if (result.mimeType && result.mimeType.startsWith('image/')) {
@@ -440,6 +448,46 @@ class GoogleDriveService {
     } catch (error) {
       console.error('Error uploading file to Google Drive:', error);
       throw error;
+    }
+  }
+
+  // Set file permission to anyone with the link (reader)
+  private async setFilePublic(fileId: string): Promise<void> {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    // Create permission
+    const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        role: 'reader',
+        type: 'anyone',
+        allowFileDiscovery: false
+      })
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Failed to set public permission: ${resp.status} ${resp.statusText} - ${text}`);
+    }
+  }
+
+  // Public method to force reconnection (e.g., when token expired)
+  async reconnect(): Promise<boolean> {
+    try {
+      this.clearStoredToken();
+      this.accessToken = null;
+      this.autoConnectPromise = null;
+      await this.initialize();
+      return await this.signIn();
+    } catch (err) {
+      console.error('Reconnect to Google Drive failed:', err);
+      return false;
     }
   }
 
