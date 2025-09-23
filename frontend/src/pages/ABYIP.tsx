@@ -840,15 +840,8 @@ const ABYIP: React.FC = () => {
 
       {/* Unified ABYIP Management Section */}
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex justify-between items-center mb-4">
+        <div className="mb-4">
           <h3 className="text-lg font-semibold text-blue-800">ABYIP Management</h3>
-          <button
-            onClick={() => setShowManagement(!showManagement)}
-            className="btn-secondary flex items-center"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            {showManagement ? 'Hide Details' : 'Show Details'}
-          </button>
         </div>
 
         {/* Year Selection */}
@@ -965,11 +958,6 @@ const ABYIP: React.FC = () => {
           </div>
         </div>
 
-        {/* Additional Details - Toggleable */}
-        {showManagement && (
-          <div className="space-y-4">
-          </div>
-        )}
       </div>
 
 

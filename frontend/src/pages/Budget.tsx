@@ -766,20 +766,11 @@ const Budget: React.FC = () => {
 
       {/* Budget Management Section */}
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex justify-between items-center mb-4">
+        <div className="mb-4">
           <h3 className="text-lg font-semibold text-blue-800">Budget Management</h3>
-          <button
-            onClick={() => setShowManagement(!showManagement)}
-            className="btn-secondary flex items-center"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            {showManagement ? 'Hide' : 'Show'} Management
-        </button>
-      </div>
+        </div>
 
-        {showManagement && (
-          <>
-            {/* Year Selection */}
+        {/* Year Selection */}
             <div className="flex items-center space-x-4 mb-4">
               <label className="text-sm font-medium text-blue-900">Select Year:</label>
               <select
@@ -787,11 +778,24 @@ const Budget: React.FC = () => {
                 onChange={(e) => {
                   const newYear = e.target.value;
                   setSelectedBudgetYear(newYear);
-                  // Reset editing state when changing years
-                  setIsEditing(false);
-                  setCurrentBudget(null);
-                  setPreview(false);
-                  // Don't automatically load budget - let user choose to create or view
+                  
+                  if (newYear) {
+                    const budgetExists = budgets.some(budget => budget.year === newYear);
+                    if (budgetExists) {
+                      // Automatically load existing budget
+                      loadBudgetByYear(parseInt(newYear));
+                    } else {
+                      // Reset editing state for available years
+                      setIsEditing(false);
+                      setCurrentBudget(null);
+                      setPreview(false);
+                    }
+                  } else {
+                    // Reset editing state when no year selected
+                    setIsEditing(false);
+                    setCurrentBudget(null);
+                    setPreview(false);
+                  }
                 }}
                 className="px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -831,19 +835,6 @@ const Budget: React.FC = () => {
                 </button>
               )}
 
-              {/* View Budget Button - Only show when budget exists for selected year */}
-              {selectedBudgetYear && budgets.some(budget => budget.year === selectedBudgetYear) && (
-                <button
-                  onClick={() => {
-                    if (selectedBudgetYear) {
-                      loadBudgetByYear(parseInt(selectedBudgetYear));
-                    }
-                  }}
-                  className="btn-secondary"
-                >
-                  View Budget
-                </button>
-              )}
             </div>
 
             {/* Budget Status for Selected Year - Inside Management */}
@@ -952,8 +943,6 @@ const Budget: React.FC = () => {
               </div>
             )}
 
-          </>
-        )}
       </div>
 
 
@@ -1624,8 +1613,8 @@ const Budget: React.FC = () => {
             <div className="mt-6 flex justify-end space-x-3">
               <button className="btn-secondary" onClick={() => setAbyipSelectionModalOpen(false)}>Cancel</button>
               <button className="btn-primary" onClick={handleImportSelectedFromABYIP} disabled={selectedAbyipProjects.length === 0}>Import Selected</button>
-            </div>
-          </div>
+        </div>
+      </div>
         </div>
       )}
 
