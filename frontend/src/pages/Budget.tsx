@@ -81,6 +81,7 @@ const Budget: React.FC = () => {
   const [selectedProgramForImport, setSelectedProgramForImport] = useState<number | null>(null);
   const [abyipProjects, setAbyipProjects] = useState<any[]>([]);
   const [selectedAbyipProjects, setSelectedAbyipProjects] = useState<number[]>([]);
+  const [preview, setPreview] = useState(false);
 
   // Helper to safely parse currency-like values
   const parseCurrency = (value: any): number => {
@@ -419,53 +420,163 @@ const Budget: React.FC = () => {
     }
   };
 
-  // Preview budget - Export to DOCX like ABYIP
-  const previewBudget = async () => {
-    if (!currentBudget) return;
+  // Preview budget - Toggle inline preview
+  const previewBudget = () => {
+    setPreview(!preview);
+  };
+
+  // Generate HTML content for preview
+  const generatePreviewContent = () => {
+    if (!currentBudget) return '';
     
-    try {
-      console.log('=== BUDGET EXPORT STARTED ===');
-      console.log('Budget data before export:', currentBudget);
-      console.log('SK Profile data:', skProfile);
-      console.log('Current user:', user);
-      
-      // Create comprehensive payload with multiple data sources
-      const payload = {
-        form: currentBudget,
-        skProfile,
-        user,
-        // Add any additional context that might help
-        timestamp: new Date().toISOString(),
-        exportType: 'BUDGET'
-      };
-      
-      // Import the export function
-      const { exportDocxFromTemplate } = await import('../services/docxExport');
-      
-      // Map budget data to template format
-      const data = mapBudgetToTemplate(payload);
-      console.log('Budget mapped data for export:', data);
-      
-      // Verify template path exists
-      const templatePath = '/templates/budget_template.docx';
-      console.log('Using template path:', templatePath);
-      
-      const outputFileName = `SK_Budget_${skProfile?.barangay || 'Document'}_${currentBudget.year || '2024'}`;
-      console.log('Output filename:', outputFileName);
-      
-      await exportDocxFromTemplate({
-        templatePath,
-        data,
-        outputFileName,
-      });
-      
-      console.log('=== BUDGET EXPORT COMPLETED SUCCESSFULLY ===');
-      alert('Budget document exported successfully!');
-    } catch (e) {
-      console.error('Budget template export failed', e);
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      alert(`Failed to export Budget Word document: ${errorMessage}`);
-    }
+    // Calculate totals
+    const totalReceipts = currentBudget.receipts.reduce((sum, receipt) => sum + receipt.total_amount, 0);
+    const totalPrograms = currentBudget.programs.reduce((sum, program) => sum + program.total_amount, 0);
+    const balance = totalReceipts - totalPrograms;
+    
+    // Get member names - use current user if they are treasurer/chairperson, otherwise use placeholders
+    const treasurer = user?.role === 'treasurer' ? { name: user.name || 'Treasurer Name' } : { name: 'Treasurer Name' };
+    const chairperson = user?.role === 'chairperson' ? { name: user.name || 'Chairperson Name' } : { name: 'Chairperson Name' };
+    
+    return (
+      <div className="bg-white border rounded-lg p-6">
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 mx-auto mb-4 border border-gray-300 flex items-center justify-center bg-gray-50">
+            {skProfile?.logo ? (
+              <img src={skProfile.logo} alt="Logo" className="max-w-full max-h-full" />
+            ) : (
+              <span className="text-gray-500">LOGO</span>
+            )}
+          </div>
+          <div>Province of {skProfile?.province || '_____'}</div>
+          <div>City of {skProfile?.city || '_____'}</div>
+          <div>Barangay {skProfile?.barangay || '_____'}</div>
+          <div className="font-bold text-lg mt-2">OFFICE OF THE SANGGUNIANG KABATAAN</div>
+          <div className="font-bold text-base mt-2">SK Approved Annual Budget for CY {currentBudget.year}</div>
+        </div>
+        
+        <div className="mb-6 text-justify">
+          On _____, the SK of Barangay {skProfile?.barangay || '_____'} (City/Municipality), through SK Resolution No. {currentBudget.sk_resolution_no || '_____'} S-{currentBudget.year}, has approved the SK Annual Budget for CY {currentBudget.year}, amounting to (₱{formatNumber(currentBudget.total_budget)}) equivalent to {currentBudget.barangay_budget_percentage}% of the approved budget of Barangay {skProfile?.barangay || '_____'} (City/Municipality), per Barangay Appropriation Ordinance No. {currentBudget.barangay_appropriation_ordinance_no || '_____'}, S-{currentBudget.year}.
+        </div>
+        
+        <table className="w-full border-collapse border border-gray-800 text-xs">
+          <thead>
+            <tr>
+              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '15%'}}>Program</th>
+              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '35%'}}>PROJECT/ACTIVITIES<br/>(Object of Expenditures)</th>
+              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '15%'}}>Duration of<br/>Projects/Activities</th>
+              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '20%'}}>Expenditure Class</th>
+              <th className="border border-gray-800 p-2 bg-gray-100 font-bold text-center" style={{width: '15%'}}>Amount</th>
+            </tr>
+            <tr>
+              <th className="border border-gray-800 p-2 bg-gray-100"></th>
+              <th className="border border-gray-800 p-2 bg-gray-100"></th>
+              <th className="border border-gray-800 p-2 bg-gray-100"></th>
+              <th className="border border-gray-800 p-2 bg-gray-100 text-center">MOOE</th>
+              <th className="border border-gray-800 p-2 bg-gray-100 text-center">CO</th>
+              <th className="border border-gray-800 p-2 bg-gray-100"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="bg-gray-200">
+              <td colSpan={6} className="border border-gray-800 p-2 font-bold">Part I. Receipts Program</td>
+            </tr>
+            {currentBudget.receipts.map((receipt, index) => (
+              <tr key={index}>
+                <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2">{receipt.source_description}</td>
+                <td className="border border-gray-800 p-2">{receipt.duration}</td>
+                <td className="border border-gray-800 p-2 text-right">₱{formatNumber(receipt.mooe_amount)}</td>
+                <td className="border border-gray-800 p-2 text-right">₱{formatNumber(receipt.co_amount)}</td>
+                <td className="border border-gray-800 p-2 text-right">₱{formatNumber(receipt.total_amount)}</td>
+              </tr>
+            ))}
+            <tr className="bg-gray-100 font-bold">
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2">TOTAL ESTIMATED FUNDS AVAILABLE FOR BUDGET</td>
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.co_amount, 0))}</td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(totalReceipts)}</td>
+            </tr>
+            
+            <tr className="bg-gray-200">
+              <td colSpan={6} className="border border-gray-800 p-2 font-bold">Part II. Expenditure Program</td>
+            </tr>
+            
+            {currentBudget.programs.map((program, programIndex) => (
+              <React.Fragment key={programIndex}>
+                <tr className="bg-gray-200">
+                  <td colSpan={6} className="border border-gray-800 p-2 font-bold">
+                    {program.program_name === 'general_administration' ? 'A. General Administration Program' : 
+                     program.program_name === 'youth_development' ? 'B. SK Youth Development and Empowerment Program' : 
+                     'C. Other Programs'}
+                  </td>
+                </tr>
+                {program.items.map((item, itemIndex) => (
+                  <tr key={itemIndex}>
+                    <td className="border border-gray-800 p-2">{itemIndex + 1}</td>
+                    <td className="border border-gray-800 p-2">{item.item_description}</td>
+                    <td className="border border-gray-800 p-2">{item.duration}</td>
+                    <td className="border border-gray-800 p-2 text-right">{item.expenditure_class === 'MOOE' ? `₱${formatNumber(item.amount)}` : ''}</td>
+                    <td className="border border-gray-800 p-2 text-right">{item.expenditure_class === 'CO' ? `₱${formatNumber(item.amount)}` : ''}</td>
+                    <td className="border border-gray-800 p-2 text-right">₱{formatNumber(item.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="bg-gray-100 font-bold">
+                  <td className="border border-gray-800 p-2"></td>
+                  <td className="border border-gray-800 p-2">
+                    Total {program.program_name === 'general_administration' ? 'General Administration' : 
+                           program.program_name === 'youth_development' ? 'SK Youth Development and Empowerment' : 'Other'} Program
+                  </td>
+                  <td className="border border-gray-800 p-2"></td>
+                  <td className="border border-gray-800 p-2 text-right">₱{formatNumber(program.mooe_total)}</td>
+                  <td className="border border-gray-800 p-2 text-right">₱{formatNumber(program.co_total)}</td>
+                  <td className="border border-gray-800 p-2 text-right">₱{formatNumber(program.total_amount)}</td>
+                </tr>
+              </React.Fragment>
+            ))}
+            
+            <tr className="bg-gray-100 font-bold">
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2">TOTAL EXPENDITURE PROGRAM</td>
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.mooe_total, 0))}</td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.co_total, 0))}</td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(totalPrograms)}</td>
+            </tr>
+            
+            <tr className="bg-gray-100 font-bold">
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2">BALANCE</td>
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2"></td>
+              <td className="border border-gray-800 p-2 text-right">₱{formatNumber(balance)}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div className="flex justify-between mt-10">
+          <div className="text-center w-48">
+            <div>Prepared by:</div>
+            <div className="border-b border-gray-800 h-8 mt-2"></div>
+            <div className="mt-2">{treasurer.name}</div>
+            <div>SK Treasurer</div>
+          </div>
+          <div className="text-center w-48">
+            <div>Noted by:</div>
+            <div className="border-b border-gray-800 h-8 mt-2"></div>
+            <div className="mt-2">{chairperson.name}</div>
+            <div>SK Chairperson</div>
+          </div>
+        </div>
+        
+        <div className="text-center text-xs italic mt-6">
+          Note: The phrases "Prepared by" and "Noted by", by the SK Treasurer and SK Chairperson, respectively, were added for purposes of submission of the SK Annual Budget to the DILG City/Municipal Field Office.
+        </div>
+      </div>
+    );
   };
 
   // Map budget data to template format (similar to ABYIP mapping)
@@ -928,7 +1039,7 @@ const Budget: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Action Buttons - Moved to top of Budget Information */}
+          {/* Action Buttons - Always visible */}
           <div className="mb-6 flex gap-2">
             {!currentBudget ? (
               <button
@@ -989,7 +1100,7 @@ const Budget: React.FC = () => {
                   className="btn-secondary flex items-center"
                 >
                   <Eye className="h-4 w-4 mr-2" />
-                  Preview
+                  {preview ? 'Edit Mode' : 'Preview'}
                 </button>
               </>
             )}
@@ -1059,7 +1170,10 @@ const Budget: React.FC = () => {
             </div>
           </div>
 
-          {/* Informational Message - Similar to ABYIP */}
+          {/* Main Content - Hidden when preview is active */}
+          {!preview && (
+            <>
+              {/* Informational Message - Similar to ABYIP */}
           {currentBudget && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center">
@@ -1471,6 +1585,16 @@ const Budget: React.FC = () => {
           </div>
         </div>
       )}
+
+              </>
+            )}
+
+            {/* Preview Section - Show when preview is true */}
+            {preview && currentBudget && (
+              <div className="space-y-6">
+                {generatePreviewContent()}
+              </div>
+            )}
         </div>
       )}
     </div>

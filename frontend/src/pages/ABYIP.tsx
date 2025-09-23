@@ -1103,6 +1103,43 @@ const ABYIP: React.FC = () => {
             </button>
           )}
 
+          {/* Re-initiate ABYIP - Only for Chairperson when rejected */}
+          {user?.role === 'chairperson' && form.status === 'rejected' && (
+            <button
+              onClick={async () => {
+                const updatedForm = {
+                  ...form,
+                  status: 'open_for_editing' as const,
+                  isEditingOpen: true,
+                  initiatedBy: user?.name,
+                  initiatedAt: new Date()
+                };
+                // Remove rejectionReason field entirely
+                delete updatedForm.rejectionReason;
+                setForm(updatedForm);
+                
+                // Update the existing ABYIP
+                try {
+                  setSaving(true);
+                  if (existingABYIPId) {
+                    await updateABYIP(existingABYIPId, updatedForm as any);
+                  }
+                  setSaved(true);
+                  setTimeout(() => setSaved(false), 3000);
+                } catch (e: any) {
+                  setError(e?.message || 'Failed to re-initiate ABYIP');
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              disabled={saving}
+              className="btn-primary flex items-center"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Re-initiate ABYIP
+            </button>
+          )}
+
           {/* Save Button - Available to all members when editing is open */}
           {form.isEditingOpen && (
             <button
@@ -1457,12 +1494,6 @@ const ABYIP: React.FC = () => {
 
                      </div>
                      
-                     {/* Page indicator for multi-page centers - Matching CBYDP format */}
-                     {totalPages > 1 && (
-                       <div className="text-xs text-right mt-2 mb-2">
-                         Page {pageNum + 1} of {totalPages}
-                       </div>
-                     )}
 
                      {/* ABYIP Table - Exact template format */}
                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt', border: '1px solid #000' }}>
@@ -1540,7 +1571,6 @@ const ABYIP: React.FC = () => {
                              ₱{formatNumber(calculateCenterSubtotal(center).toString())}
                            </td>
                            <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#f3f4f6' }}></td>
-                           <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#f3f4f6' }}></td>
                          </tr>
                          
                          {/* Grand Total Row - only on the last center */}
@@ -1561,7 +1591,6 @@ const ABYIP: React.FC = () => {
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', fontWeight: 'bold', textAlign: 'right', backgroundColor: '#dbeafe' }}>
                                ₱{formatNumber(calculateGrandTotal().toString())}
                              </td>
-                             <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#dbeafe' }}></td>
                              <td style={{ border: '1px solid #000', padding: '4px', verticalAlign: 'top', backgroundColor: '#dbeafe' }}></td>
                            </tr>
                          )}
@@ -2170,7 +2199,6 @@ const ABYIP: React.FC = () => {
                               ₱{formatNumber(calculateCenterSubtotal(center).toString())}
                             </td>
                             <td className="border border-gray-300 p-2"></td>
-                            <td className="border border-gray-300 p-2"></td>
                           </tr>
                           
                           {/* Grand Total Row - only on the last center */}
@@ -2191,7 +2219,6 @@ const ABYIP: React.FC = () => {
                               <td className="border border-gray-300 p-2 font-bold text-sm text-right">
                                 ₱{formatNumber(calculateGrandTotal().toString())}
                               </td>
-                              <td className="border border-gray-300 p-2"></td>
                               <td className="border border-gray-300 p-2"></td>
                             </tr>
                           )}
