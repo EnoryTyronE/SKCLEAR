@@ -1013,8 +1013,8 @@ const ABYIP: React.FC = () => {
       )}
 
 
-      {/* Action Buttons - Only show when editing is open */}
-      {form.isEditingOpen && (
+      {/* Action Buttons - Show when editing is open OR when there's an existing ABYIP */}
+      {(form.isEditingOpen || existingABYIPId) && (
         <div className="mb-6 flex justify-between items-center">
         <div className="flex space-x-3">
           {/* Initiate ABYIP - Only for Chairperson when not initiated */}
@@ -1264,12 +1264,14 @@ const ABYIP: React.FC = () => {
             Reset All ABYIPs
           </button>
 
-          {/* Back to List Button - Show when editing is open */}
-          {form.isEditingOpen && (
+          {/* Back to List Button - Show when there's an existing ABYIP */}
+          {existingABYIPId && (
             <button
               onClick={() => {
                 setForm(prev => ({ ...prev, isEditingOpen: false }));
                 setPreview(false);
+                setExistingABYIPId(null);
+                setSelectedABYIPYear('');
               }}
               className="btn-secondary flex items-center"
             >
@@ -1592,45 +1594,48 @@ const ABYIP: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Workflow Status Notices - Only show when editing is open */}
-          {form.isEditingOpen && form.status === 'not_initiated' && (
+          {/* Workflow Status Notices - Show when editing is open OR when there's an existing ABYIP */}
+          {(form.isEditingOpen || existingABYIPId) && form.status === 'not_initiated' && (
             <div className="mb-6 p-4 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg flex items-center">
               <AlertCircle className="h-5 w-5 mr-2" />
               ABYIP for {form.year} has not been initiated yet. The SK Chairperson must initiate the ABYIP to begin the process.
             </div>
           )}
 
-            {form.isEditingOpen && form.status === 'open_for_editing' && (
+            {(form.isEditingOpen || existingABYIPId) && form.status === 'open_for_editing' && (
               <div className="mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg flex items-center">
                 <CheckCircle className="h-5 w-5 mr-2" />
                 ABYIP for {form.year} is open for editing. All SK members can add and edit projects.
               </div>
             )}
 
-            {form.isEditingOpen && form.status === 'pending_kk_approval' && (
+            {(form.isEditingOpen || existingABYIPId) && form.status === 'pending_kk_approval' && (
               <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg flex items-center">
                 <AlertCircle className="h-5 w-5 mr-2" />
-                ABYIP is pending Katipunan ng Kabataan approval. The SK Chairperson must upload proof of KK approval.
+                {form.isEditingOpen ? 
+                  'ABYIP is pending Katipunan ng Kabataan approval. The SK Chairperson must upload proof of KK approval.' :
+                  'ABYIP editing period has been closed. The ABYIP is now pending Katipunan ng Kabataan approval. The SK Chairperson must upload proof of KK approval.'
+                }
               </div>
             )}
 
 
-          {form.isEditingOpen && form.status === 'approved' && (
+          {(form.isEditingOpen || existingABYIPId) && form.status === 'approved' && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center">
               <CheckCircle className="h-5 w-5 mr-2" />
               ABYIP for {form.year} has been approved and is now read-only.
             </div>
           )}
 
-          {form.isEditingOpen && form.status === 'rejected' && (
+          {(form.isEditingOpen || existingABYIPId) && form.status === 'rejected' && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center">
               <AlertCircle className="h-5 w-5 mr-2" />
               ABYIP for {form.year} was rejected. Reason: {form.rejectionReason}. The SK Chairperson can re-initiate the ABYIP to start the process again.
             </div>
           )}
 
-          {/* Main Form Content */}
-          {form.isEditingOpen && (
+          {/* Main Form Content - Show when editing is open OR when there's an existing ABYIP */}
+          {(form.isEditingOpen || existingABYIPId) && (
             <div>
             {/* Yearly Budget */}
             <div className="card">
@@ -2216,8 +2221,8 @@ const ABYIP: React.FC = () => {
           
           )}
 
-      {/* Existing ABYIPs Panel - Similar to Budget page */}
-      {!form.isEditingOpen && (
+      {/* Existing ABYIPs Panel - Only show when no ABYIP is being viewed */}
+      {!form.isEditingOpen && !existingABYIPId && (
         <div className="card p-6 mt-6">
           <h2 className="text-xl font-semibold mb-4">Existing ABYIPs</h2>
           {allABYIPs.length === 0 ? (
