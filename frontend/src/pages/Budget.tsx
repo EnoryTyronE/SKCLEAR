@@ -30,6 +30,15 @@ interface BudgetItem {
   duration: string;
 }
 
+interface YouthCenter {
+  center_name: string;
+  items: BudgetItem[];
+  mooe_total: number;
+  co_total: number;
+  ps_total: number;
+  total_amount: number;
+}
+
 interface BudgetProgram {
   program_name: string;
   program_type: 'general_administration' | 'youth_development' | 'other';
@@ -38,6 +47,8 @@ interface BudgetProgram {
   ps_total: number;
   total_amount: number;
   items: BudgetItem[];
+  // For youth development programs, use centers instead of items
+  centers?: YouthCenter[];
 }
 
 interface SKAnnualBudget {
@@ -179,7 +190,17 @@ const Budget: React.FC = () => {
         co_total: 0,
         ps_total: 0,
         total_amount: 0,
-        items: []
+        items: [],
+        centers: [
+          {
+            center_name: 'Center of Participation 1',
+            items: [],
+            mooe_total: 0,
+            co_total: 0,
+            ps_total: 0,
+            total_amount: 0
+          }
+        ]
       }
     ]
   };
@@ -749,24 +770,55 @@ const Budget: React.FC = () => {
               {currentBudget.programs
                 .filter(program => program.program_type === 'youth_development')
                 .map((program, programIndex) => (
-                  program.items.map((item, itemIndex) => (
-                    <tr key={`${programIndex}-${itemIndex}`}>
-                      <td className="border border-gray-800 p-2 pl-6">{itemIndex + 1}. {item.item_name}</td>
+                  program.centers?.map((center, centerIndex) => (
+                    <tr key={`${programIndex}-${centerIndex}`}>
+                      <td className="border border-gray-800 p-2 pl-6">
+                        <div className="font-bold mb-1">{center.center_name}</div>
+                      </td>
                       <td className="border border-gray-800 p-2">
-                        <div className="font-bold mb-1">{item.item_description}</div>
+                        {center.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="mb-2">
+                            <div className="font-bold mb-1">{itemIndex + 1}. {item.item_name}</div>
+                            <div className="text-sm text-gray-600 mb-1">{item.item_description}</div>
+                            <div className="text-xs text-gray-500">
+                              Duration: {item.duration || 'As needed'} | 
+                              Amount: P {formatNumber(item.amount)} ({item.expenditure_class})
+                            </div>
+                          </div>
+                        ))}
                       </td>
-                      <td className="border border-gray-800 p-2 text-center">{item.duration || 'As needed'}</td>
                       <td className="border border-gray-800 p-2 text-center">
-                        {item.expenditure_class === 'MOOE' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                        {center.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="mb-1">{item.duration || 'As needed'}</div>
+                        ))}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
-                        {item.expenditure_class === 'CO' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                        {center.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="mb-1">
+                            {item.expenditure_class === 'MOOE' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                          </div>
+                        ))}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
-                        {item.expenditure_class === 'PS' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                        {center.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="mb-1">
+                            {item.expenditure_class === 'CO' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                          </div>
+                        ))}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
-                        P {formatNumber(program.items.reduce((sum, p) => sum + (p.amount || 0), 0))}
+                        {center.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="mb-1">
+                            {item.expenditure_class === 'PS' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="border border-gray-800 p-2 text-center">
+                        {center.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="mb-1">
+                            <span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>
+                          </div>
+                        ))}
                       </td>
                     </tr>
                   ))
@@ -903,13 +955,16 @@ const Budget: React.FC = () => {
       },
 
       // Part II.B Youth Development
-      yd_items: youthDevelopment.items.map((i: any) => ({
-        name: i.item_name,
-        description: i.item_description,
-        duration: i.duration || '',
-        mooe: i.expenditure_class === 'MOOE' ? fmt(i.amount || 0) : '',
-        co: i.expenditure_class === 'CO' ? fmt(i.amount || 0) : '',
-      })),
+      yd_items: (youthDevelopment.centers || []).flatMap((center: any) => 
+        center.items.map((i: any) => ({
+          center_name: center.center_name,
+          name: i.item_name,
+          description: i.item_description,
+          duration: i.duration || '',
+          mooe: i.expenditure_class === 'MOOE' ? fmt(i.amount || 0) : '',
+          co: i.expenditure_class === 'CO' ? fmt(i.amount || 0) : '',
+        }))
+      ),
       yd_totals: {
         mooe: fmt(youthDevelopment.mooe_total || 0),
         co: fmt(youthDevelopment.co_total || 0),
@@ -1104,6 +1159,196 @@ const Budget: React.FC = () => {
     if (currentBudget.id) {
       await autoSave(updatedBudget);
     }
+  };
+
+  // Add new center to youth development program
+  const addYouthCenter = async (programIndex: number) => {
+    if (!currentBudget) return;
+    const updatedPrograms = [...currentBudget.programs];
+    const program = updatedPrograms[programIndex];
+    
+    if (!program.centers) {
+      program.centers = [];
+    }
+    
+    const newCenter: YouthCenter = {
+      center_name: `Center of Participation ${program.centers.length + 1}`,
+      items: [],
+      mooe_total: 0,
+      co_total: 0,
+      ps_total: 0,
+      total_amount: 0
+    };
+    
+    program.centers.push(newCenter);
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Auto-save after adding center
+    if (currentBudget.id) {
+      await autoSave(updatedBudget);
+    }
+  };
+
+  // Remove center from youth development program
+  const removeYouthCenter = async (programIndex: number, centerIndex: number) => {
+    if (!currentBudget) return;
+    const updatedPrograms = [...currentBudget.programs];
+    const program = updatedPrograms[programIndex];
+    
+    if (program.centers) {
+      program.centers = program.centers.filter((_, idx) => idx !== centerIndex);
+      
+      // Recalculate program totals from centers
+      program.mooe_total = program.centers.reduce((sum, center) => sum + center.mooe_total, 0);
+      program.co_total = program.centers.reduce((sum, center) => sum + center.co_total, 0);
+      program.ps_total = program.centers.reduce((sum, center) => sum + center.ps_total, 0);
+      program.total_amount = program.mooe_total + program.co_total + program.ps_total;
+    }
+    
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Auto-save after removing center
+    if (currentBudget.id) {
+      await autoSave(updatedBudget);
+    }
+  };
+
+  // Add new item to a youth center
+  const addYouthCenterItem = async (programIndex: number, centerIndex: number) => {
+    if (!currentBudget) return;
+    const updatedPrograms = [...currentBudget.programs];
+    const program = updatedPrograms[programIndex];
+    
+    if (program.centers && program.centers[centerIndex]) {
+      const center = program.centers[centerIndex];
+      const newItem: BudgetItem = {
+        item_name: '',
+        item_description: '',
+        expenditure_class: 'MOOE',
+        amount: 0,
+        duration: ''
+      };
+      
+      center.items.push(newItem);
+      
+      // Recalculate center totals
+      center.mooe_total = center.items.filter(i => i.expenditure_class === 'MOOE').reduce((s, i) => s + (i.amount || 0), 0);
+      center.co_total = center.items.filter(i => i.expenditure_class === 'CO').reduce((s, i) => s + (i.amount || 0), 0);
+      center.ps_total = center.items.filter(i => i.expenditure_class === 'PS').reduce((s, i) => s + (i.amount || 0), 0);
+      center.total_amount = center.mooe_total + center.co_total + center.ps_total;
+      
+      // Recalculate program totals
+      program.mooe_total = program.centers.reduce((sum, c) => sum + c.mooe_total, 0);
+      program.co_total = program.centers.reduce((sum, c) => sum + c.co_total, 0);
+      program.ps_total = program.centers.reduce((sum, c) => sum + c.ps_total, 0);
+      program.total_amount = program.mooe_total + program.co_total + program.ps_total;
+    }
+    
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Auto-save after adding item
+    if (currentBudget.id) {
+      await autoSave(updatedBudget);
+    }
+  };
+
+  // Remove item from a youth center
+  const removeYouthCenterItem = async (programIndex: number, centerIndex: number, itemIndex: number) => {
+    if (!currentBudget) return;
+    const updatedPrograms = [...currentBudget.programs];
+    const program = updatedPrograms[programIndex];
+    
+    if (program.centers && program.centers[centerIndex]) {
+      const center = program.centers[centerIndex];
+      center.items = center.items.filter((_, idx) => idx !== itemIndex);
+      
+      // Recalculate center totals
+      center.mooe_total = center.items.filter(i => i.expenditure_class === 'MOOE').reduce((s, i) => s + (i.amount || 0), 0);
+      center.co_total = center.items.filter(i => i.expenditure_class === 'CO').reduce((s, i) => s + (i.amount || 0), 0);
+      center.ps_total = center.items.filter(i => i.expenditure_class === 'PS').reduce((s, i) => s + (i.amount || 0), 0);
+      center.total_amount = center.mooe_total + center.co_total + center.ps_total;
+      
+      // Recalculate program totals
+      program.mooe_total = program.centers.reduce((sum, c) => sum + c.mooe_total, 0);
+      program.co_total = program.centers.reduce((sum, c) => sum + c.co_total, 0);
+      program.ps_total = program.centers.reduce((sum, c) => sum + c.ps_total, 0);
+      program.total_amount = program.mooe_total + program.co_total + program.ps_total;
+    }
+    
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Auto-save after removing item
+    if (currentBudget.id) {
+      await autoSave(updatedBudget);
+    }
+  };
+
+  // Update youth center field
+  const updateYouthCenter = (programIndex: number, centerIndex: number, field: string, value: any) => {
+    if (!currentBudget) return;
+    const updatedPrograms = [...currentBudget.programs];
+    const program = updatedPrograms[programIndex];
+    
+    if (program.centers && program.centers[centerIndex]) {
+      program.centers[centerIndex] = { ...program.centers[centerIndex], [field]: value };
+    }
+    
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Clear any existing timeout
+    if ((window as any).youthCenterTimeout) {
+      clearTimeout((window as any).youthCenterTimeout);
+    }
+    
+    // Set a new timeout for auto-save
+    (window as any).youthCenterTimeout = setTimeout(async () => {
+      await autoSave(updatedBudget);
+    }, 2000);
+  };
+
+  // Update youth center item
+  const updateYouthCenterItem = (programIndex: number, centerIndex: number, itemIndex: number, field: string, value: any) => {
+    if (!currentBudget) return;
+    const updatedPrograms = [...currentBudget.programs];
+    const program = updatedPrograms[programIndex];
+    
+    if (program.centers && program.centers[centerIndex]) {
+      const center = program.centers[centerIndex];
+      const updatedItems = [...center.items];
+      const normalizedValue = field === 'amount' ? (Number(value) || 0) : value;
+      updatedItems[itemIndex] = { ...updatedItems[itemIndex], [field]: normalizedValue };
+      center.items = updatedItems;
+      
+      // Recalculate center totals
+      center.mooe_total = center.items.filter(i => i.expenditure_class === 'MOOE').reduce((s, i) => s + (i.amount || 0), 0);
+      center.co_total = center.items.filter(i => i.expenditure_class === 'CO').reduce((s, i) => s + (i.amount || 0), 0);
+      center.ps_total = center.items.filter(i => i.expenditure_class === 'PS').reduce((s, i) => s + (i.amount || 0), 0);
+      center.total_amount = center.mooe_total + center.co_total + center.ps_total;
+      
+      // Recalculate program totals
+      program.mooe_total = program.centers.reduce((sum, c) => sum + c.mooe_total, 0);
+      program.co_total = program.centers.reduce((sum, c) => sum + c.co_total, 0);
+      program.ps_total = program.centers.reduce((sum, c) => sum + c.ps_total, 0);
+      program.total_amount = program.mooe_total + program.co_total + program.ps_total;
+    }
+    
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Clear any existing timeout
+    if ((window as any).youthCenterItemTimeout) {
+      clearTimeout((window as any).youthCenterItemTimeout);
+    }
+    
+    // Set a new timeout for auto-save
+    (window as any).youthCenterItemTimeout = setTimeout(async () => {
+      await autoSave(updatedBudget);
+    }, 2000);
   };
 
   // Load data on component mount
@@ -1827,6 +2072,185 @@ const Budget: React.FC = () => {
                 <div key={programIndex} className="border rounded-lg p-4">
                   <h3 className="text-lg font-semibold mb-4">{program.program_name}</h3>
                   
+                  {program.program_type === 'youth_development' ? (
+                    // Youth Development Program with Centers
+                    <div className="space-y-6">
+                      {program.centers?.map((center, centerIndex) => (
+                        <div key={centerIndex} className="border rounded-lg p-4 bg-blue-50">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex-1 mr-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Center of Participation</label>
+                              <input
+                                type="text"
+                                value={center.center_name}
+                                onChange={(e) => updateYouthCenter(programIndex, centerIndex, 'center_name', e.target.value)}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Enter center name"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeYouthCenter(programIndex, centerIndex)}
+                              disabled={currentBudget?.status !== 'open_for_editing' || (program.centers?.length || 0) <= 1}
+                              className="text-red-600 hover:text-red-800 text-sm"
+                            >
+                              Remove Center
+                            </button>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => addYouthCenterItem(programIndex, centerIndex)}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
+                                className="btn-secondary text-sm"
+                              >
+                                + Add Item
+                              </button>
+                            </div>
+                            
+                            {center.items.map((item, itemIndex) => (
+                              <div key={itemIndex} className="border rounded p-3 bg-white">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                  <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
+                                    <input
+                                      type="text"
+                                      value={item.item_name}
+                                      onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'item_name', e.target.value)}
+                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      placeholder="Enter item name"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Expenditure Class</label>
+                                    <select
+                                      value={item.expenditure_class}
+                                      onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'expenditure_class', e.target.value)}
+                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      <option value="MOOE">MOOE</option>
+                                      <option value="CO">CO</option>
+                                      <option value="PS">PS</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                                    <input
+                                      type="text"
+                                      value={item.amount.toString()}
+                                      onChange={(e) => {
+                                        handleNumberInput(e.target.value, (value) => 
+                                          updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'amount', parseFloat(value) || 0)
+                                        );
+                                      }}
+                                      onBlur={(e) => {
+                                        const formatted = handleNumberDisplay(e.target.value);
+                                        updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'amount', parseFloat(formatted.replace(/,/g, '')) || 0);
+                                      }}
+                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                                    <input
+                                      type="text"
+                                      value={item.duration}
+                                      onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'duration', e.target.value)}
+                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      placeholder="e.g., January - March"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="mt-2">
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                  <input
+                                    type="text"
+                                    value={item.item_description}
+                                    onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'item_description', e.target.value)}
+                                    disabled={currentBudget?.status !== 'open_for_editing'}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter item description"
+                                  />
+                                </div>
+                                <div className="mt-2 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeYouthCenterItem(programIndex, centerIndex, itemIndex)}
+                                    disabled={currentBudget?.status !== 'open_for_editing'}
+                                    className="text-red-600 hover:text-red-800 text-sm"
+                                  >
+                                    Remove Item
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Center Totals */}
+                          <div className="mt-4 p-3 bg-blue-100 rounded">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">MOOE Total</label>
+                                <input
+                                  type="text"
+                                  value={handleNumberDisplay(center.mooe_total.toString())}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                                  readOnly
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">CO Total</label>
+                                <input
+                                  type="text"
+                                  value={handleNumberDisplay(center.co_total.toString())}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                                  readOnly
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">PS Total</label>
+                                <input
+                                  type="text"
+                                  value={handleNumberDisplay(center.ps_total.toString())}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                                  readOnly
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
+                                <input
+                                  type="text"
+                                  value={handleNumberDisplay(center.total_amount.toString())}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                                  readOnly
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => addYouthCenter(programIndex)}
+                          disabled={currentBudget?.status !== 'open_for_editing'}
+                          className="btn-secondary text-sm"
+                        >
+                          + Add Center of Participation
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    // General Administration Program (existing structure)
                   <div className="space-y-4">
                     <div className="flex justify-end">
                       <button
@@ -1859,6 +2283,7 @@ const Budget: React.FC = () => {
                               type="text"
                               value={item.item_name}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'item_name', e.target.value)}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
@@ -1867,6 +2292,7 @@ const Budget: React.FC = () => {
                             <select
                               value={item.expenditure_class}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'expenditure_class', e.target.value)}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                               <option value="MOOE">MOOE</option>
@@ -1885,10 +2311,10 @@ const Budget: React.FC = () => {
                                 );
                               }}
                               onBlur={(e) => {
-                                // Format the number when user finishes typing
                                 const formatted = handleNumberDisplay(e.target.value);
                                 updateProgramItem(programIndex, itemIndex, 'amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                               }}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="0.00"
                             />
@@ -1899,6 +2325,7 @@ const Budget: React.FC = () => {
                               type="text"
                               value={item.duration}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'duration', e.target.value)}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
@@ -1910,6 +2337,7 @@ const Budget: React.FC = () => {
                               type="text"
                               value={item.item_description}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'item_description', e.target.value)}
+                                disabled={currentBudget?.status !== 'open_for_editing'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
@@ -1927,6 +2355,7 @@ const Budget: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  )}
 
                   {/* Program Totals */}
                   <div className="mt-4 p-3 bg-gray-50 rounded">
