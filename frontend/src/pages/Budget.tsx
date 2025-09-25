@@ -8,6 +8,8 @@ import {
   deleteSKAnnualBudget,
   getABYIP
 } from '../services/firebaseService';
+import { getDocs, collection } from 'firebase/firestore';
+import { db } from '../firebase';
 import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X } from 'lucide-react';
 
 // Interface definitions based on the template structure
@@ -85,6 +87,8 @@ const Budget: React.FC = () => {
   const [abyipProjects, setAbyipProjects] = useState<any[]>([]);
   const [selectedAbyipProjects, setSelectedAbyipProjects] = useState<number[]>([]);
   const [preview, setPreview] = useState(false);
+  const [skMembers, setSkMembers] = useState<any[]>([]);
+  const [saved, setSaved] = useState(false);
 
   // Helper to safely parse currency-like values
   const parseCurrency = (value: any): number => {
@@ -94,9 +98,47 @@ const Budget: React.FC = () => {
     const num = parseFloat(str);
     return isNaN(num) ? 0 : num;
   };
+
+  // Number formatting utility functions (adapted from CBYDP)
+  const formatNumber = (value: string | number): string => {
+    if (!value && value !== 0) return '';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const parseNumber = (value: string): string => {
+    if (!value) return '';
+    // Remove commas and parse as number
+    const cleaned = value.replace(/,/g, '');
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) return '';
+    return num.toString();
+  };
+
+  const handleNumberInput = (value: string, callback: (value: string) => void) => {
+    // Allow only numbers, commas, and one decimal point
+    const cleaned = value.replace(/[^0-9.,]/g, '');
+    // Ensure only one decimal point
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      return; // Invalid input
+    }
+    
+    // Store the raw input value without formatting during typing
+    // This allows natural typing flow like 1 -> 10 -> 100 -> 1000
+    // Remove any existing commas to prevent conflicts
+    const rawValue = cleaned.replace(/,/g, '');
+    callback(rawValue);
+  };
+
+  const handleNumberDisplay = (value: string): string => {
+    if (!value) return '';
+    // Always format for display - this ensures 5000 shows as 5,000.00
+    return formatNumber(value);
+  };
   const [selectedBudgetYear, setSelectedBudgetYear] = useState<string>('');
   const [showManagement, setShowManagement] = useState(true);
-  const [saved, setSaved] = useState(false);
 
   // Default budget structure based on the template
   const defaultBudget: SKAnnualBudget = {
@@ -140,35 +182,6 @@ const Budget: React.FC = () => {
     ]
   };
 
-  // Number formatting utility functions
-  const formatNumber = (value: string | number): string => {
-    if (!value && value !== 0) return '';
-    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
-    if (isNaN(num)) return '';
-    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const parseNumber = (value: string): string => {
-    if (!value) return '';
-    const cleaned = value.replace(/,/g, '');
-    const num = parseFloat(cleaned);
-    if (isNaN(num)) return '';
-    return num.toString();
-  };
-
-  const handleNumberInput = (value: string, callback: (value: string) => void) => {
-    const cleaned = value.replace(/[^0-9.,]/g, '');
-    const parts = cleaned.split('.');
-    if (parts.length > 2) return;
-    
-    const rawValue = cleaned.replace(/,/g, '');
-    callback(rawValue);
-  };
-
-  const handleNumberDisplay = (value: string): string => {
-    if (!value) return '';
-    return formatNumber(value);
-  };
 
   // Generate year options based on SK setup
   const generateYearOptions = () => {
@@ -308,6 +321,32 @@ const Budget: React.FC = () => {
       console.error('Error loading ABYIP data:', error);
     }
   }, [selectedBudgetYear]);
+
+  // Load SK members
+  const loadSKMembers = useCallback(async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'users'));
+      const members: any[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.isActive !== false) {
+          members.push({
+            id: doc.id,
+            name: data.name || '',
+            role: data.role || '',
+            email: data.email || '',
+            isActive: data.isActive !== false
+          });
+        }
+      });
+      console.log('Loaded SK members:', members);
+      console.log('Treasurer found:', members.find(member => member.role === 'treasurer'));
+      console.log('Chairperson found:', members.find(member => member.role === 'chairperson'));
+      setSkMembers(members);
+    } catch (error) {
+      console.error('Error loading SK members:', error);
+    }
+  }, []);
 
   // Import ABYIP projects into a selected program
   const openImportFromABYIP = (programIndex: number) => {
@@ -476,9 +515,9 @@ const Budget: React.FC = () => {
         {/* Approval Statement */}
         <div className="mb-8 text-sm leading-relaxed">
           <p>
-            On <span className="underline">{resolutionDate}</span>, the SK of Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span> (City/Municipality), 
+            On <span className="underline">{resolutionDate}</span>, the SK of Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span>, <span className="underline">{skProfile?.city || '_____________'}</span>, 
             through SK Resolution No. <span className="underline">{currentBudget.sk_resolution_no || '_____________'}</span> S-<span className="underline">{currentBudget.sk_resolution_series || currentBudget.year}</span>, has approved the SK Annual Budget for CY {currentBudget.year}, 
-            amounting to (P <span className="underline">{formatNumber(currentBudget.total_budget)}</span>) equivalent to {currentBudget.barangay_budget_percentage || 10}% of the approved budget of Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span> (City/Municipality), 
+            amounting to (P <span className="underline">{formatNumber(currentBudget.total_budget)}</span>) equivalent to {currentBudget.barangay_budget_percentage || 10}% of the approved budget of Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span>, <span className="underline">{skProfile?.city || '_____________'}</span>, 
             per Barangay Appropriation Ordinance No. <span className="underline">{currentBudget.barangay_appropriation_ordinance_no || '_____________'}</span>, S-<span className="underline">{currentBudget.ordinance_series || currentBudget.year}</span>.
           </p>
         </div>
@@ -508,7 +547,7 @@ const Budget: React.FC = () => {
               <tr>
                 <td className="border border-gray-800 p-2 font-bold">Part I. Receipts Program</td>
                 <td className="border border-gray-800 p-2">
-                  Ten percent ({currentBudget.barangay_budget_percentage || 10}%) of the general fund of the Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span> City/Municipality of <span className="underline">{skProfile?.city || '_____________'}</span>
+                  Ten percent ({currentBudget.barangay_budget_percentage || 10}%) of the general fund of the Barangay <span className="underline">{skProfile?.barangay || '_____________'}</span>, <span className="underline">{skProfile?.city || '_____________'}</span>
                 </td>
                 <td className="border border-gray-800 p-2 text-center">January - December</td>
                 <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
@@ -750,19 +789,34 @@ const Budget: React.FC = () => {
         </div>
 
         {/* Signature Blocks */}
-        <div className="mt-12 flex justify-between">
+        <div className="mt-12 mx-16 flex justify-between gap-16">
           <div className="text-center">
             <div className="mb-2">Prepared by:</div>
+            <div className="mb-1">
+              {(() => {
+                const treasurer = skMembers.find(member => member.role === 'treasurer');
+                console.log('Treasurer lookup:', treasurer);
+                console.log('All members:', skMembers);
+                console.log('Current user role:', user?.role);
+                return treasurer ? treasurer.name : (user?.role === 'treasurer' ? user.name : 'SK Treasurer');
+              })()}
+            </div>
             <div className="border-b border-gray-800 w-48 mb-1"></div>
             <div className="font-bold">
-              {user?.role === 'treasurer' ? user.name : 'SK Treasurer'}
+              SK Treasurer
             </div>
           </div>
           <div className="text-center">
             <div className="mb-2">Noted by:</div>
+            <div className="mb-1">
+              {(() => {
+                const chairperson = skMembers.find(member => member.role === 'chairperson');
+                return chairperson ? chairperson.name : (user?.role === 'chairperson' ? user.name : 'SK Chairperson');
+              })()}
+            </div>
             <div className="border-b border-gray-800 w-48 mb-1"></div>
             <div className="font-bold">
-              {user?.role === 'chairperson' ? user.name : 'SK Chairperson'}
+              SK Chairperson
             </div>
           </div>
         </div>
@@ -885,13 +939,45 @@ const Budget: React.FC = () => {
     }
   };
 
-  // Update budget field
-  const updateBudgetField = (field: string, value: any) => {
-    if (!currentBudget) return;
-    setCurrentBudget({ ...currentBudget, [field]: value });
+  // Autosave function
+  const autoSave = async (updatedBudget: SKAnnualBudget) => {
+    if (!currentBudget?.id) return;
+    
+    try {
+      const budgetData = {
+        ...updatedBudget,
+        lastEditedBy: user?.name,
+        lastEditedAt: new Date()
+      };
+      
+      await updateSKAnnualBudget(currentBudget.id, budgetData);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error auto-saving budget:', error);
+      setError('Failed to auto-save. Please click Save Budget manually.');
+    }
   };
 
-  // Update receipt
+  // Update budget field with autosave
+  const updateBudgetField = (field: string, value: any) => {
+    if (!currentBudget) return;
+    
+    const updatedBudget = { ...currentBudget, [field]: value };
+    setCurrentBudget(updatedBudget);
+    
+    // Clear any existing timeout
+    if ((window as any).budgetFieldTimeout) {
+      clearTimeout((window as any).budgetFieldTimeout);
+    }
+    
+    // Set a new timeout for auto-save
+    (window as any).budgetFieldTimeout = setTimeout(async () => {
+      await autoSave(updatedBudget);
+    }, 2000); // Wait 2 seconds after user stops typing
+  };
+
+  // Update receipt with autosave
   const updateReceipt = (index: number, field: string, value: any) => {
     if (!currentBudget) return;
     const updatedReceipts = [...currentBudget.receipts];
@@ -904,10 +990,21 @@ const Budget: React.FC = () => {
       updatedReceipts[index].total_amount = mooe + co;
     }
     
-    setCurrentBudget({ ...currentBudget, receipts: updatedReceipts });
+    const updatedBudget = { ...currentBudget, receipts: updatedReceipts };
+    setCurrentBudget(updatedBudget);
+    
+    // Clear any existing timeout
+    if ((window as any).receiptTimeout) {
+      clearTimeout((window as any).receiptTimeout);
+    }
+    
+    // Set a new timeout for auto-save
+    (window as any).receiptTimeout = setTimeout(async () => {
+      await autoSave(updatedBudget);
+    }, 2000); // Wait 2 seconds after user stops typing
   };
 
-  // Update program item
+  // Update program item with autosave
   const updateProgramItem = (programIndex: number, itemIndex: number, field: string, value: any) => {
     if (!currentBudget) return;
     const updatedPrograms = [...currentBudget.programs];
@@ -929,11 +1026,22 @@ const Budget: React.FC = () => {
       .reduce((sum, item) => sum + (item.amount || 0), 0);
     program.total_amount = program.mooe_total + program.co_total + program.ps_total;
     
-    setCurrentBudget({ ...currentBudget, programs: updatedPrograms });
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Clear any existing timeout
+    if ((window as any).programItemTimeout) {
+      clearTimeout((window as any).programItemTimeout);
+    }
+    
+    // Set a new timeout for auto-save
+    (window as any).programItemTimeout = setTimeout(async () => {
+      await autoSave(updatedBudget);
+    }, 2000); // Wait 2 seconds after user stops typing
   };
 
-  // Add new item to a program
-  const addProgramItem = (programIndex: number) => {
+  // Add new item to a program with autosave
+  const addProgramItem = async (programIndex: number) => {
     if (!currentBudget) return;
     const updatedPrograms = [...currentBudget.programs];
     const newItem: BudgetItem = {
@@ -951,11 +1059,17 @@ const Budget: React.FC = () => {
     program.ps_total = program.items.filter(i => i.expenditure_class === 'PS').reduce((s, i) => s + (i.amount || 0), 0);
     program.total_amount = program.mooe_total + program.co_total + program.ps_total;
 
-    setCurrentBudget({ ...currentBudget, programs: updatedPrograms });
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Auto-save after adding item
+    if (currentBudget.id) {
+      await autoSave(updatedBudget);
+    }
   };
 
-  // Remove item from a program
-  const removeProgramItem = (programIndex: number, itemIndex: number) => {
+  // Remove item from a program with autosave
+  const removeProgramItem = async (programIndex: number, itemIndex: number) => {
     if (!currentBudget) return;
     const updatedPrograms = [...currentBudget.programs];
     updatedPrograms[programIndex].items = updatedPrograms[programIndex].items.filter((_, idx) => idx !== itemIndex);
@@ -966,14 +1080,21 @@ const Budget: React.FC = () => {
     program.ps_total = program.items.filter(i => i.expenditure_class === 'PS').reduce((s, i) => s + (i.amount || 0), 0);
     program.total_amount = program.mooe_total + program.co_total + program.ps_total;
 
-    setCurrentBudget({ ...currentBudget, programs: updatedPrograms });
+    const updatedBudget = { ...currentBudget, programs: updatedPrograms };
+    setCurrentBudget(updatedBudget);
+    
+    // Auto-save after removing item
+    if (currentBudget.id) {
+      await autoSave(updatedBudget);
+    }
   };
 
   // Load data on component mount
   useEffect(() => {
     loadBudgets();
     loadABYIPData();
-  }, [loadBudgets, loadABYIPData]);
+    loadSKMembers();
+  }, [loadBudgets, loadABYIPData, loadSKMembers]);
 
   return (
     <div className="space-y-6">
@@ -1171,8 +1292,9 @@ const Budget: React.FC = () => {
       )}
 
       {saved && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-          Budget saved successfully!
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded flex items-center">
+          <CheckCircle className="h-4 w-4 mr-2" />
+          Budget auto-saved successfully!
         </div>
       )}
 
@@ -1443,11 +1565,20 @@ const Budget: React.FC = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Overall Budget Amount</label>
                 <input
-                  type="number"
-                  value={currentBudget?.total_budget || ''}
-                  onChange={(e) => updateBudgetField('total_budget', parseFloat(e.target.value) || 0)}
+                  type="text"
+                  value={currentBudget?.total_budget?.toString() || ''}
+                  onChange={(e) => {
+                    handleNumberInput(e.target.value, (value) => 
+                      updateBudgetField('total_budget', parseFloat(value) || 0)
+                    );
+                  }}
+                  onBlur={(e) => {
+                    // Format the number when user finishes typing
+                    const formatted = handleNumberDisplay(e.target.value);
+                    updateBudgetField('total_budget', parseFloat(formatted.replace(/,/g, '')) || 0);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., 100000"
+                  placeholder="0.00"
                 />
               </div>
               <div>
@@ -1601,11 +1732,16 @@ const Budget: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-1">MOOE Amount</label>
                       <input
                         type="text"
-                        value={handleNumberDisplay(receipt.mooe_amount.toString())}
+                        value={receipt.mooe_amount.toString()}
                         onChange={(e) => {
                           handleNumberInput(e.target.value, (value) => 
                             updateReceipt(index, 'mooe_amount', parseFloat(value) || 0)
                           );
+                        }}
+                        onBlur={(e) => {
+                          // Format the number when user finishes typing
+                          const formatted = handleNumberDisplay(e.target.value);
+                          updateReceipt(index, 'mooe_amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                         }}
                         disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1616,11 +1752,16 @@ const Budget: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-1">CO Amount</label>
                       <input
                         type="text"
-                        value={handleNumberDisplay(receipt.co_amount.toString())}
+                        value={receipt.co_amount.toString()}
                         onChange={(e) => {
                           handleNumberInput(e.target.value, (value) => 
                             updateReceipt(index, 'co_amount', parseFloat(value) || 0)
                           );
+                        }}
+                        onBlur={(e) => {
+                          // Format the number when user finishes typing
+                          const formatted = handleNumberDisplay(e.target.value);
+                          updateReceipt(index, 'co_amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                         }}
                         disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1701,11 +1842,16 @@ const Budget: React.FC = () => {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
                             <input
                               type="text"
-                              value={handleNumberDisplay(item.amount.toString())}
+                              value={item.amount.toString()}
                               onChange={(e) => {
                                 handleNumberInput(e.target.value, (value) => 
                                   updateProgramItem(programIndex, itemIndex, 'amount', parseFloat(value) || 0)
                                 );
+                              }}
+                              onBlur={(e) => {
+                                // Format the number when user finishes typing
+                                const formatted = handleNumberDisplay(e.target.value);
+                                updateProgramItem(programIndex, itemIndex, 'amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                               }}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="0.00"
