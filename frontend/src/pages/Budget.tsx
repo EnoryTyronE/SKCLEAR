@@ -18,6 +18,7 @@ interface BudgetReceipt {
   duration: string;
   mooe_amount: number;
   co_amount: number;
+  ps_amount: number;
   total_amount: number;
 }
 
@@ -157,6 +158,7 @@ const Budget: React.FC = () => {
         duration: 'January - December',
         mooe_amount: 0,
         co_amount: 0,
+        ps_amount: 0,
         total_amount: 0
       }
     ],
@@ -530,7 +532,7 @@ const Budget: React.FC = () => {
                 <th className="border border-gray-800 p-2 text-left font-bold" style={{ width: '15%' }}>Program</th>
                 <th className="border border-gray-800 p-2 text-left font-bold" style={{ width: '35%' }}>PROJECT/ACTIVITIES (Object of Expenditures)</th>
                 <th className="border border-gray-800 p-2 text-center font-bold" style={{ width: '15%' }}>Duration of Projects/Activities</th>
-                <th colSpan={2} className="border border-gray-800 p-2 text-center font-bold" style={{ width: '25%' }}>Expenditure Class</th>
+                <th colSpan={3} className="border border-gray-800 p-2 text-center font-bold" style={{ width: '25%' }}>Expenditure Class</th>
                 <th className="border border-gray-800 p-2 text-center font-bold" style={{ width: '10%' }}>Amount</th>
               </tr>
               <tr>
@@ -539,6 +541,7 @@ const Budget: React.FC = () => {
                 <th className="border border-gray-800 p-1"></th>
                 <th className="border border-gray-800 p-1 text-center font-bold">MOOE</th>
                 <th className="border border-gray-800 p-1 text-center font-bold">CO</th>
+                <th className="border border-gray-800 p-1 text-center font-bold">PS</th>
                 <th className="border border-gray-800 p-1"></th>
               </tr>
             </thead>
@@ -552,6 +555,7 @@ const Budget: React.FC = () => {
                 <td className="border border-gray-800 p-2 text-center">January - December</td>
                 <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
                 <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.co_amount, 0))}</td>
+                <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + ((r as any).ps_amount || 0), 0))}</td>
                 <td className="border border-gray-800 p-2 text-center">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.total_amount, 0))}</td>
               </tr>
               
@@ -561,12 +565,14 @@ const Budget: React.FC = () => {
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.mooe_amount, 0))}</td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.co_amount, 0))}</td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + ((r as any).ps_amount || 0), 0))}</td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.receipts.reduce((sum, r) => sum + r.total_amount, 0))}</td>
               </tr>
 
               {/* Part II: Expenditure Program */}
               <tr>
                 <td colSpan={2} className="border border-gray-800 p-2 font-bold">Part II. Expenditure Program</td>
+                <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
@@ -580,20 +586,21 @@ const Budget: React.FC = () => {
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
+                <td className="border border-gray-800 p-2"></td>
               </tr>
 
               {/* Current Operating Expenditures with MOOE */}
               <tr>
-                <td rowSpan={2} className="border border-gray-800 p-2 pl-6">Current Operating Expenditures (COE)</td>
+                <td rowSpan={3} className="border border-gray-800 p-2 pl-6">Current Operating Expenditures (COE)</td>
                 <td className="border border-gray-800 p-2">
                   <div className="font-bold mb-1">Maintenance and Other Operating Expenses (MOOE):</div>
                   {currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
                     .filter(item => item.expenditure_class === 'MOOE')
                     .map((item, index) => (
                       <div key={index} className="ml-2 mb-1">
-                        {item.item_name || item.item_description} - P <span className="underline">{formatNumber(item.amount)}</span>
+                        {item.item_name || item.item_description} - <span className="text-[12px] align-middle">P <span className="underline align-middle">{formatNumber(item.amount)}</span></span>
                       </div>
-                    )) || <div className="ml-2">P <span className="underline">_____________</span></div>}
+                    )) || <div className="ml-2"></div>}
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
                   {currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
@@ -605,24 +612,25 @@ const Budget: React.FC = () => {
                 <td className="border border-gray-800 p-2 text-center">
                   {(() => {
                     const mooeTotal = currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
-                      .filter(item => item.expenditure_class === 'MOOE')
+                    .filter(item => item.expenditure_class === 'MOOE')
                       .reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
                     return mooeTotal > 0 ? 
-                      `P ${formatNumber(mooeTotal)}` : 
-                      <span>P <span className="underline">_____________</span></span>;
+                      (<span className="whitespace-nowrap text-[12px]">P {formatNumber(mooeTotal)}</span>) : 
+                      '';
                   })()}
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
-                  <span>P <span className="underline">_____________</span></span>
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
                   {(() => {
                     const mooeTotal = currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
-                      .filter(item => item.expenditure_class === 'MOOE')
+                    .filter(item => item.expenditure_class === 'MOOE')
                       .reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
                     return mooeTotal > 0 ? 
-                      `P ${formatNumber(mooeTotal)}` : 
-                      <span>P <span className="underline">_____________</span></span>;
+                      (<span className="whitespace-nowrap text-[12px]">P {formatNumber(mooeTotal)}</span>) : 
+                      '';
                   })()}
                 </td>
               </tr>
@@ -635,9 +643,9 @@ const Budget: React.FC = () => {
                     .filter(item => item.expenditure_class === 'CO')
                     .map((item, index) => (
                       <div key={index} className="ml-2 mb-1">
-                        {item.item_name || item.item_description} - P <span className="underline">{formatNumber(item.amount)}</span>
+                        {item.item_name || item.item_description} - <span className="text-[12px] align-middle">P <span className="underline align-middle">{formatNumber(item.amount)}</span></span>
                       </div>
-                    )) || <div className="ml-2">P <span className="underline">_____________</span></div>}
+                    )) || <div className="ml-2"></div>}
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
                   {currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
@@ -647,7 +655,18 @@ const Budget: React.FC = () => {
                     )) || <span className="underline">_____________</span>}
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
-                  <span>P <span className="underline">_____________</span></span>
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {(() => {
+                    const coTotal = currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'CO')
+                      .reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+                    return coTotal > 0 ? 
+                      (<span className="whitespace-nowrap text-[12px]">P {formatNumber(coTotal)}</span>) : 
+                      '';
+                  })()}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
                   {(() => {
@@ -655,18 +674,53 @@ const Budget: React.FC = () => {
                       .filter(item => item.expenditure_class === 'CO')
                       .reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
                     return coTotal > 0 ? 
-                      `P ${formatNumber(coTotal)}` : 
-                      <span>P <span className="underline">_____________</span></span>;
+                      (<span className="whitespace-nowrap text-[12px]">P {formatNumber(coTotal)}</span>) : 
+                      '';
+                  })()}
+                </td>
+              </tr>
+
+              {/* Personal Services (PS) in separate row */}
+              <tr>
+                <td className="border border-gray-800 p-2">
+                  <div className="font-bold mb-1">Personal Services (PS):</div>
+                  {currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'PS')
+                    .map((item, index) => (
+                      <div key={index} className="ml-2 mb-1">
+                        {item.item_name || item.item_description} - <span className="text-[12px] align-middle">P <span className="underline align-middle">{formatNumber(item.amount)}</span></span>
+                      </div>
+                    )) || <div className="ml-2"></div>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
+                    .filter(item => item.expenditure_class === 'PS')
+                    .map((item, index) => (
+                      <div key={index} className="mb-1">{item.duration || <span className="underline">_____________</span>}</div>
+                    )) || <span className="underline">_____________</span>}
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                </td>
+                <td className="border border-gray-800 p-2 text-center">
+                  {(() => {
+                    const psTotal = currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
+                      .filter(item => item.expenditure_class === 'PS')
+                      .reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+                    return psTotal > 0 ? 
+                      (<span className="whitespace-nowrap text-[12px]">P {formatNumber(psTotal)}</span>) : 
+                      '';
                   })()}
                 </td>
                 <td className="border border-gray-800 p-2 text-center">
                   {(() => {
-                    const coTotal = currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
-                      .filter(item => item.expenditure_class === 'CO')
+                    const psTotal = currentBudget.programs.find(p => p.program_type === 'general_administration')?.items
+                      .filter(item => item.expenditure_class === 'PS')
                       .reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
-                    return coTotal > 0 ? 
-                      `P ${formatNumber(coTotal)}` : 
-                      <span>P <span className="underline">_____________</span></span>;
+                    return psTotal > 0 ? 
+                      (<span className="whitespace-nowrap text-[12px]">P {formatNumber(psTotal)}</span>) : 
+                      '';
                   })()}
                 </td>
               </tr>
@@ -675,14 +729,15 @@ const Budget: React.FC = () => {
               <tr>
                 <td colSpan={2} className="border border-gray-800 p-2 font-bold">Total General Administration Program</td>
                 <td className="border border-gray-800 p-2"></td>
-                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
-                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
-                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
               </tr>
 
               {/* B. SK Youth Development and Empowerment Program */}
               <tr>
-                <td className="border border-gray-800 p-2 font-bold">B. SK Youth Development and Empowerment Program</td>
+                <td colSpan={2} className="border border-gray-800 p-2 font-bold">B. SK Youth Development and Empowerment Program</td>
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2"></td>
@@ -702,72 +757,30 @@ const Budget: React.FC = () => {
                       </td>
                       <td className="border border-gray-800 p-2 text-center">{item.duration || 'As needed'}</td>
                       <td className="border border-gray-800 p-2 text-center">
-                        {item.expenditure_class === 'MOOE' ? `P ${formatNumber(item.amount)}` : 'P 0'}
+                        {item.expenditure_class === 'MOOE' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
-                        {item.expenditure_class === 'CO' ? `P ${formatNumber(item.amount)}` : 'P 0'}
+                        {item.expenditure_class === 'CO' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
-                        P {formatNumber(item.amount)}
+                        {item.expenditure_class === 'PS' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                      </td>
+                      <td className="border border-gray-800 p-2 text-center">
+                        P {formatNumber(program.items.reduce((sum, p) => sum + (p.amount || 0), 0))}
                       </td>
                     </tr>
                   ))
                 ))}
               
-              {/* Show placeholder rows if no youth development programs exist */}
-              {(!currentBudget.programs.find(p => p.program_type === 'youth_development') || 
-                currentBudget.programs.find(p => p.program_type === 'youth_development')?.items.length === 0) && (
-                <>
-                  <tr>
-                    <td className="border border-gray-800 p-2 pl-6">1. <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-800 p-2 pl-6">2. <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-800 p-2 pl-6">3. <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-800 p-2 pl-6">4. <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-800 p-2 pl-6">5. <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                    <td className="border border-gray-800 p-2">P <span className="underline">_____________</span></td>
-                  </tr>
-                </>
-              )}
 
               {/* Total SK Youth Development */}
               <tr>
                 <td colSpan={2} className="border border-gray-800 p-2 font-bold">Total SK Youth Development and Empowerment Programs</td>
                 <td className="border border-gray-800 p-2"></td>
-                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
-                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
-                <td className="border border-gray-800 p-2 text-center font-bold">P <span className="underline">_____________</span></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold"></td>
               </tr>
 
               {/* Total Expenditure Program */}
@@ -776,12 +789,13 @@ const Budget: React.FC = () => {
                 <td className="border border-gray-800 p-2"></td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.mooe_total, 0))}</td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.co_total, 0))}</td>
+                <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.ps_total, 0))}</td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(currentBudget.programs.reduce((sum, p) => sum + p.total_amount, 0))}</td>
               </tr>
 
               {/* Balance */}
               <tr>
-                <td colSpan={5} className="border border-gray-800 p-2 font-bold uppercase">BALANCE</td>
+                <td colSpan={6} className="border border-gray-800 p-2 font-bold uppercase">BALANCE</td>
                 <td className="border border-gray-800 p-2 text-center font-bold">P {formatNumber(balance)}</td>
               </tr>
             </tbody>
@@ -866,11 +880,13 @@ const Budget: React.FC = () => {
         duration: r.duration,
         mooe_amount: fmt(r.mooe_amount || 0),
         co_amount: fmt(r.co_amount || 0),
+    ps_amount: fmt(r.ps_amount || 0),
         total_amount: fmt(r.total_amount || 0),
       })),
       receipts_totals: {
         mooe: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.mooe_amount || 0), 0)),
         co: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.co_amount || 0), 0)),
+    ps: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.ps_amount || 0), 0)),
         total: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.total_amount || 0), 0)),
       },
 
@@ -984,11 +1000,12 @@ const Budget: React.FC = () => {
     updatedReceipts[index] = { ...updatedReceipts[index], [field]: value };
     
     // Recalculate total
-    if (field === 'mooe_amount' || field === 'co_amount') {
+  if (field === 'mooe_amount' || field === 'co_amount' || field === 'ps_amount') {
       const mooe = field === 'mooe_amount' ? value : updatedReceipts[index].mooe_amount;
       const co = field === 'co_amount' ? value : updatedReceipts[index].co_amount;
-      updatedReceipts[index].total_amount = mooe + co;
-    }
+    const ps = field === 'ps_amount' ? value : (updatedReceipts[index] as any).ps_amount || 0;
+    updatedReceipts[index].total_amount = (mooe || 0) + (co || 0) + (ps || 0);
+  }
     
     const updatedBudget = { ...currentBudget, receipts: updatedReceipts };
     setCurrentBudget(updatedBudget);
@@ -1707,7 +1724,7 @@ const Budget: React.FC = () => {
             <div className="space-y-4">
               {currentBudget?.receipts.map((receipt, index) => (
                 <div key={index} className="border rounded-lg p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Source Description</label>
                       <input
@@ -1769,10 +1786,29 @@ const Budget: React.FC = () => {
                       />
                     </div>
                     <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">PS Amount</label>
+                      <input
+                        type="text"
+                        value={(receipt as any).ps_amount?.toString?.() || '0'}
+                        onChange={(e) => {
+                          handleNumberInput(e.target.value, (value) => 
+                            updateReceipt(index, 'ps_amount', parseFloat(value) || 0)
+                          );
+                        }}
+                        onBlur={(e) => {
+                          const formatted = handleNumberDisplay(e.target.value);
+                          updateReceipt(index, 'ps_amount', parseFloat(formatted.replace(/,/g, '')) || 0);
+                        }}
+                        disabled={currentBudget?.status !== 'open_for_editing'}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
                       <input
                         type="text"
-                        value={handleNumberDisplay(receipt.total_amount.toString())}
+                        value={handleNumberDisplay((((receipt as any).mooe_amount || 0) + ((receipt as any).co_amount || 0) + (((receipt as any).ps_amount) || 0)).toString())}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
                         readOnly
                       />
