@@ -10,7 +10,7 @@ import {
 } from '../services/firebaseService';
 import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase';
-import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X, AlertCircle } from 'lucide-react';
+import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapBudgetToTemplate } from '../services/docxExport';
 
 // Interface definitions based on the template structure
@@ -103,6 +103,18 @@ const Budget: React.FC = () => {
   const [preview, setPreview] = useState(false);
   const [skMembers, setSkMembers] = useState<any[]>([]);
   const [saved, setSaved] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<{[key: string]: boolean}>({
+    generalAdministration: true,
+    youthDevelopment: true
+  });
+
+  // Toggle section expansion
+  const toggleSection = (sectionKey: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
 
   // Helper to safely parse currency-like values
   const parseCurrency = (value: any): number => {
@@ -2085,7 +2097,22 @@ const Budget: React.FC = () => {
             <div className="space-y-6">
               {currentBudget?.programs.map((program, programIndex) => (
                 <div key={programIndex} className="border rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-4">{program.program_name}</h3>
+                  {/* Collapsible Header */}
+                  <div 
+                    className="flex items-center justify-between cursor-pointer mb-4"
+                    onClick={() => toggleSection(program.program_type === 'general_administration' ? 'generalAdministration' : 'youthDevelopment')}
+                  >
+                    <h3 className="text-lg font-semibold">{program.program_name}</h3>
+                    {expandedSections[program.program_type === 'general_administration' ? 'generalAdministration' : 'youthDevelopment'] ? (
+                      <ChevronDown className="h-5 w-5 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-5 w-5 text-gray-500" />
+                    )}
+                  </div>
+                  
+                  {/* Collapsible Content */}
+                  {expandedSections[program.program_type === 'general_administration' ? 'generalAdministration' : 'youthDevelopment'] && (
+                    <>
                   
                   {program.program_type === 'youth_development' ? (
                     // Youth Development Program with Centers
@@ -2413,6 +2440,8 @@ const Budget: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
               ))}
         </div>
