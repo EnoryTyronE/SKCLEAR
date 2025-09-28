@@ -524,4 +524,270 @@ export function mapABYIPToTemplate(payload: any) {
   return finalResult;
 }
 
+export function mapBudgetToTemplate(payload: any) {
+  console.log('Mapping Budget data:', payload);
+  
+  const budget = payload.form;
+  const profile = payload.skProfile;
+
+  // Get member names using the same approach as ABYIP
+  const memberNames = getMemberNames(payload);
+  
+  // Get real member names from the data
+  let secretaryName = memberNames.secretary?.name || '';
+  let chairpersonName = memberNames.chairperson?.name || '';
+  let treasurerName = memberNames.treasurer?.name || '';
+
+  const fmt = (n: number) => (typeof n === 'number' ? n.toLocaleString() : '');
+  const dateStr = budget?.sk_resolution_date
+    ? new Date(budget.sk_resolution_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+
+  const generalAdministration = (budget?.programs || []).find((p: any) => p.program_type === 'general_administration') || { items: [], mooe_total: 0, co_total: 0 };
+  const youthDevelopment = (budget?.programs || []).find((p: any) => p.program_type === 'youth_development') || { items: [], mooe_total: 0, co_total: 0 };
+
+  const result = {
+    // Header
+    province: profile?.province || '',
+    city: profile?.city || '',
+    barangay: profile?.barangay || '',
+    logo: profile?.logo || '',
+    year: budget?.year || '',
+
+    // Resolution / ordinance
+    sk_resolution_no: budget?.sk_resolution_no || '',
+    sk_resolution_series: budget?.sk_resolution_series || budget?.year || '',
+    sk_resolution_date: dateStr,
+    ordinance_no: budget?.barangay_appropriation_ordinance_no || '',
+    ordinance_series: budget?.ordinance_series || budget?.year || '',
+
+    // Amounts
+    total_budget: fmt(budget?.total_budget || 0),
+
+    // Prepared by section (for signatures)
+    prepared_by: {
+      treasurer: treasurerName || 'SK Treasurer Name',
+      chairperson: chairpersonName || 'SK Chairperson Name',
+    },
+
+    // Receipts (Part I)
+    receipts: (budget?.receipts || []).map((r: any) => ({
+      source_description: String(r.source_description || ''),
+      duration: String(r.duration || ''),
+      mooe_amount: String(fmt(r.mooe_amount || 0)),
+      co_amount: String(fmt(r.co_amount || 0)),
+      ps_amount: String(fmt(r.ps_amount || 0)),
+      total_amount: String(fmt(r.total_amount || 0)),
+    })),
+    receipts_totals: {
+      mooe: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.mooe_amount || 0), 0)),
+      co: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.co_amount || 0), 0)),
+      ps: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.ps_amount || 0), 0)),
+      total: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.total_amount || 0), 0)),
+      amount: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.total_amount || 0), 0)), // Total for AMOUNT column
+    },
+
+    // Part II.A General Administration - Grouped by expenditure class
+    ga_mooe_items: [{
+      description: generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'MOOE')
+        .map((i: any) => `${i.item_description || ''}\n${i.item_name || ''} - P ${fmt(i.amount || 0)}`)
+        .join('\n\n'),
+      duration: generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'MOOE')
+        .map((i: any) => i.duration || '')
+        .join('\n'),
+      mooe: fmt(generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'MOOE')
+        .reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
+      co: '',
+      ps: '',
+      amount: fmt(generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'MOOE')
+        .reduce((sum: number, i: any) => sum + (i.amount || 0), 0))
+    }],
+    ga_co_items: [{
+      description: generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'CO')
+        .map((i: any) => `${i.item_description || ''}\n${i.item_name || ''} - P ${fmt(i.amount || 0)}`)
+        .join('\n\n'),
+      duration: generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'CO')
+        .map((i: any) => i.duration || '')
+        .join('\n'),
+      mooe: '',
+      co: fmt(generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'CO')
+        .reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
+      ps: '',
+      amount: fmt(generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'CO')
+        .reduce((sum: number, i: any) => sum + (i.amount || 0), 0))
+    }],
+    ga_ps_items: [{
+      description: generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'PS')
+        .map((i: any) => `${i.item_description || ''}\n${i.item_name || ''} - P ${fmt(i.amount || 0)}`)
+        .join('\n\n'),
+      duration: generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'PS')
+        .map((i: any) => i.duration || '')
+        .join('\n'),
+      mooe: '',
+      co: '',
+      ps: fmt(generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'PS')
+        .reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
+      amount: fmt(generalAdministration.items
+        .filter((i: any) => i.expenditure_class === 'PS')
+        .reduce((sum: number, i: any) => sum + (i.amount || 0), 0))
+    }],
+    ga_totals: {
+      mooe: fmt(generalAdministration.mooe_total || 0),
+      co: fmt(generalAdministration.co_total || 0),
+      ps: fmt(generalAdministration.ps_total || 0),
+      amount: fmt(generalAdministration.total_amount || 0), // Total for AMOUNT column
+    },
+
+    // Part II.B Youth Development - Grouped by center and expenditure class
+    yd_items: (() => {
+      const result: any[] = [];
+
+      // Process each center
+      (youthDevelopment.centers || []).forEach((center: any) => {
+        const centerName = center.center_name || '';
+        const items = center.items || [];
+
+        // Group items by expenditure class within this center
+        const mooeItems = items.filter((i: any) => i.expenditure_class === 'MOOE');
+        const coItems = items.filter((i: any) => i.expenditure_class === 'CO');
+        const psItems = items.filter((i: any) => i.expenditure_class === 'PS');
+
+        // Add MOOE row for this center if there are MOOE items
+        if (mooeItems.length > 0) {
+          const mooeDisplay = mooeItems.map((i: any) => 
+            `${i.item_description || ''}\n${i.item_name || ''} - P ${fmt(i.amount || 0)}`
+          ).join('\n');
+          
+          result.push({
+            center_name: centerName,
+            name: mooeDisplay,
+            description: '', // Empty since description is already in the name field
+            duration: mooeItems.map((i: any) => i.duration || '').join('\n'),
+            mooe: fmt(mooeItems.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
+            co: '',
+            ps: '',
+            amount: fmt(mooeItems.reduce((sum: number, i: any) => sum + (i.amount || 0), 0))
+          });
+        }
+
+        // Add CO row for this center if there are CO items
+        if (coItems.length > 0) {
+          const coDisplay = coItems.map((i: any) => 
+            `${i.item_description || ''}\n${i.item_name || ''} - P ${fmt(i.amount || 0)}`
+          ).join('\n');
+          
+          result.push({
+            center_name: centerName,
+            name: coDisplay,
+            description: '', // Empty since description is already in the name field
+            duration: coItems.map((i: any) => i.duration || '').join('\n'),
+            mooe: '',
+            co: fmt(coItems.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
+            ps: '',
+            amount: fmt(coItems.reduce((sum: number, i: any) => sum + (i.amount || 0), 0))
+          });
+        }
+
+        // Add PS row for this center if there are PS items
+        if (psItems.length > 0) {
+          const psDisplay = psItems.map((i: any) => 
+            `${i.item_description || ''}\n${i.item_name || ''} - P ${fmt(i.amount || 0)}`
+          ).join('\n');
+          
+          result.push({
+            center_name: centerName,
+            name: psDisplay,
+            description: '', // Empty since description is already in the name field
+            duration: psItems.map((i: any) => i.duration || '').join('\n'),
+            mooe: '',
+            co: '',
+            ps: fmt(psItems.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
+            amount: fmt(psItems.reduce((sum: number, i: any) => sum + (i.amount || 0), 0))
+          });
+        }
+      });
+
+      return result;
+    })(),
+    yd_totals: {
+      mooe: fmt(youthDevelopment.mooe_total || 0),
+      co: fmt(youthDevelopment.co_total || 0),
+      ps: fmt(youthDevelopment.ps_total || 0),
+      amount: fmt(youthDevelopment.total_amount || 0), // Total for AMOUNT column
+    },
+
+    // Grand totals
+    exp_totals: {
+      mooe: fmt((budget?.programs || []).reduce((s: number, p: any) => s + (p.mooe_total || 0), 0)),
+      co: fmt((budget?.programs || []).reduce((s: number, p: any) => s + (p.co_total || 0), 0)),
+      ps: fmt((budget?.programs || []).reduce((s: number, p: any) => s + (p.ps_total || 0), 0)),
+      amount: fmt((budget?.programs || []).reduce((s: number, p: any) => s + (p.total_amount || 0), 0)), // Total for AMOUNT column
+    },
+  };
+
+  // FINAL VALIDATION: Ensure no undefined values make it to the template
+  // Use flattened structure for better docxtemplater compatibility (like ABYIP)
+  const finalResult = {
+    ...result,
+    // Flattened structure for template compatibility with [[]] delimiters
+    'province': String(result.province || ''),
+    'city': String(result.city || ''),
+    'barangay': String(result.barangay || ''),
+    'logo': String(result.logo || ''),
+    'year': String(result.year || ''),
+    'sk_resolution_no': String(result.sk_resolution_no || ''),
+    'sk_resolution_series': String(result.sk_resolution_series || ''),
+    'sk_resolution_date': String(result.sk_resolution_date || ''),
+    'ordinance_no': String(result.ordinance_no || ''),
+    'ordinance_series': String(result.ordinance_series || ''),
+    'total_budget': String(result.total_budget || ''),
+    // Flattened prepared_by structure
+    'prepared_by.treasurer': String(result.prepared_by?.treasurer || ''),
+    'prepared_by.chairperson': String(result.prepared_by?.chairperson || ''),
+    // Flattened totals structure to prevent undefined values
+    'receipts_totals.mooe': String(result.receipts_totals?.mooe || '0'),
+    'receipts_totals.co': String(result.receipts_totals?.co || '0'),
+    'receipts_totals.ps': String(result.receipts_totals?.ps || '0'),
+    'receipts_totals.total': String(result.receipts_totals?.total || '0'),
+    'receipts_totals.amount': String(result.receipts_totals?.amount || '0'),
+    'ga_totals.mooe': String(result.ga_totals?.mooe || '0'),
+    'ga_totals.co': String(result.ga_totals?.co || '0'),
+    'ga_totals.ps': String(result.ga_totals?.ps || '0'),
+    'ga_totals.amount': String(result.ga_totals?.amount || '0'),
+    'yd_totals.mooe': String(result.yd_totals?.mooe || '0'),
+    'yd_totals.co': String(result.yd_totals?.co || '0'),
+    'yd_totals.ps': String(result.yd_totals?.ps || '0'),
+    'yd_totals.amount': String(result.yd_totals?.amount || '0'),
+    'exp_totals.mooe': String(result.exp_totals?.mooe || '0'),
+    'exp_totals.co': String(result.exp_totals?.co || '0'),
+    'exp_totals.ps': String(result.exp_totals?.ps || '0'),
+    'exp_totals.amount': String(result.exp_totals?.amount || '0'),
+  };
+
+  console.log('Final Budget mapped data:', finalResult);
+  console.log('DEBUG - receipts array:', finalResult.receipts);
+  console.log('DEBUG - receipts array length:', finalResult.receipts?.length);
+  console.log('DEBUG - ga_mooe_items array:', finalResult.ga_mooe_items);
+  console.log('DEBUG - ga_mooe_items array length:', finalResult.ga_mooe_items?.length);
+  console.log('DEBUG - ga_co_items array:', finalResult.ga_co_items);
+  console.log('DEBUG - ga_co_items array length:', finalResult.ga_co_items?.length);
+  console.log('DEBUG - ga_ps_items array:', finalResult.ga_ps_items);
+  console.log('DEBUG - ga_ps_items array length:', finalResult.ga_ps_items?.length);
+  console.log('DEBUG - yd_items array:', finalResult.yd_items);
+  console.log('DEBUG - yd_items array length:', finalResult.yd_items?.length);
+  console.log('DEBUG - member names:', { treasurerName, chairpersonName, secretaryName });
+  return finalResult;
+}
+
 

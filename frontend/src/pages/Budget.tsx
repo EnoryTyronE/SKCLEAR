@@ -10,7 +10,8 @@ import {
 } from '../services/firebaseService';
 import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase';
-import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X } from 'lucide-react';
+import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X, AlertCircle } from 'lucide-react';
+import { exportDocxFromTemplate, mapBudgetToTemplate } from '../services/docxExport';
 
 // Interface definitions based on the template structure
 interface BudgetReceipt {
@@ -778,8 +779,8 @@ const Budget: React.FC = () => {
                       <td className="border border-gray-800 p-2">
                         {center.items.map((item, itemIndex) => (
                           <div key={itemIndex} className="mb-2">
-                            <div className="font-bold mb-1">{itemIndex + 1}. {item.item_name}</div>
                             <div className="text-sm text-gray-600 mb-1">{item.item_description}</div>
+                            <div className="font-bold mb-1">{itemIndex + 1}. {item.item_name}</div>
                             <div className="text-xs text-gray-500">
                               Duration: {item.duration || 'As needed'} | 
                               Amount: P {formatNumber(item.amount)} ({item.expenditure_class})
@@ -829,10 +830,34 @@ const Budget: React.FC = () => {
               <tr>
                 <td colSpan={2} className="border border-gray-800 p-2 font-bold">Total SK Youth Development and Empowerment Programs</td>
                 <td className="border border-gray-800 p-2"></td>
-                <td className="border border-gray-800 p-2 text-center font-bold"></td>
-                <td className="border border-gray-800 p-2 text-center font-bold"></td>
-                <td className="border border-gray-800 p-2 text-center font-bold"></td>
-                <td className="border border-gray-800 p-2 text-center font-bold"></td>
+                <td className="border border-gray-800 p-2 text-center font-bold">
+                  {(() => {
+                    const youthProgram = currentBudget.programs.find(p => p.program_type === 'youth_development');
+                    const mooeTotal = youthProgram?.centers?.reduce((sum, center) => sum + center.mooe_total, 0) || 0;
+                    return mooeTotal > 0 ? `P ${formatNumber(mooeTotal)}` : '';
+                  })()}
+                </td>
+                <td className="border border-gray-800 p-2 text-center font-bold">
+                  {(() => {
+                    const youthProgram = currentBudget.programs.find(p => p.program_type === 'youth_development');
+                    const coTotal = youthProgram?.centers?.reduce((sum, center) => sum + center.co_total, 0) || 0;
+                    return coTotal > 0 ? `P ${formatNumber(coTotal)}` : '';
+                  })()}
+                </td>
+                <td className="border border-gray-800 p-2 text-center font-bold">
+                  {(() => {
+                    const youthProgram = currentBudget.programs.find(p => p.program_type === 'youth_development');
+                    const psTotal = youthProgram?.centers?.reduce((sum, center) => sum + center.ps_total, 0) || 0;
+                    return psTotal > 0 ? `P ${formatNumber(psTotal)}` : '';
+                  })()}
+                </td>
+                <td className="border border-gray-800 p-2 text-center font-bold">
+                  {(() => {
+                    const youthProgram = currentBudget.programs.find(p => p.program_type === 'youth_development');
+                    const totalAmount = youthProgram?.centers?.reduce((sum, center) => sum + center.total_amount, 0) || 0;
+                    return totalAmount > 0 ? `P ${formatNumber(totalAmount)}` : '';
+                  })()}
+                </td>
               </tr>
 
               {/* Total Expenditure Program */}
@@ -895,88 +920,7 @@ const Budget: React.FC = () => {
     );
   };
 
-  // Map budget data to DOCX template format (placeholders guide below)
-  const mapBudgetToTemplate = (payload: any) => {
-    const budget = payload.form;
-    const profile = payload.skProfile;
-
-    const fmt = (n: number) => (typeof n === 'number' ? n.toLocaleString() : '');
-    const dateStr = budget?.sk_resolution_date
-      ? new Date(budget.sk_resolution_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
-      : '';
-
-    const generalAdministration = (budget?.programs || []).find((p: any) => p.program_type === 'general_administration') || { items: [], mooe_total: 0, co_total: 0 };
-    const youthDevelopment = (budget?.programs || []).find((p: any) => p.program_type === 'youth_development') || { items: [], mooe_total: 0, co_total: 0 };
-
-    return {
-      // Header
-      province: profile?.province || '',
-      city: profile?.city || '',
-      barangay: profile?.barangay || '',
-      logo: profile?.logo || '',
-      year: budget?.year || '',
-
-      // Resolution / ordinance
-      sk_resolution_no: budget?.sk_resolution_no || '',
-      sk_resolution_series: budget?.sk_resolution_series || budget?.year || '',
-      sk_resolution_date: dateStr,
-      ordinance_no: budget?.barangay_appropriation_ordinance_no || '',
-      ordinance_series: budget?.ordinance_series || budget?.year || '',
-
-      // Amounts
-      total_budget: fmt(budget?.total_budget || 0),
-
-      // Receipts (Part I)
-      receipts: (budget?.receipts || []).map((r: any) => ({
-        source_description: r.source_description,
-        duration: r.duration,
-        mooe_amount: fmt(r.mooe_amount || 0),
-        co_amount: fmt(r.co_amount || 0),
-    ps_amount: fmt(r.ps_amount || 0),
-        total_amount: fmt(r.total_amount || 0),
-      })),
-      receipts_totals: {
-        mooe: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.mooe_amount || 0), 0)),
-        co: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.co_amount || 0), 0)),
-    ps: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.ps_amount || 0), 0)),
-        total: fmt((budget?.receipts || []).reduce((s: number, r: any) => s + (r.total_amount || 0), 0)),
-      },
-
-      // Part II.A General Administration
-      ga_mooe_items: generalAdministration.items
-        .filter((i: any) => i.expenditure_class === 'MOOE')
-        .map((i: any) => ({ description: i.item_description, duration: i.duration || '', mooe: fmt(i.amount || 0), co: '' })),
-      ga_co_items: generalAdministration.items
-        .filter((i: any) => i.expenditure_class === 'CO')
-        .map((i: any) => ({ description: i.item_description, duration: i.duration || '', mooe: '', co: fmt(i.amount || 0) })),
-      ga_totals: {
-        mooe: fmt(generalAdministration.mooe_total || 0),
-        co: fmt(generalAdministration.co_total || 0),
-      },
-
-      // Part II.B Youth Development
-      yd_items: (youthDevelopment.centers || []).flatMap((center: any) => 
-        center.items.map((i: any) => ({
-          center_name: center.center_name,
-          name: i.item_name,
-          description: i.item_description,
-          duration: i.duration || '',
-          mooe: i.expenditure_class === 'MOOE' ? fmt(i.amount || 0) : '',
-          co: i.expenditure_class === 'CO' ? fmt(i.amount || 0) : '',
-        }))
-      ),
-      yd_totals: {
-        mooe: fmt(youthDevelopment.mooe_total || 0),
-        co: fmt(youthDevelopment.co_total || 0),
-      },
-
-      // Grand totals
-      exp_totals: {
-        mooe: fmt((budget?.programs || []).reduce((s: number, p: any) => s + (p.mooe_total || 0), 0)),
-        co: fmt((budget?.programs || []).reduce((s: number, p: any) => s + (p.co_total || 0), 0)),
-      },
-    };
-  };
+  // Map budget data to DOCX template format (using [[]] delimiters like ABYIP)
 
   // Close editing period - similar to ABYIP
   const closeEditingPeriod = async () => {
@@ -1351,6 +1295,46 @@ const Budget: React.FC = () => {
     }, 2000);
   };
 
+  // Export to Word functionality
+  const exportToWord = async () => {
+    if (!currentBudget) {
+      alert('No budget data to export');
+      return;
+    }
+
+    try {
+      console.log('=== STARTING BUDGET EXPORT ===');
+      
+      // Map budget data to template format
+      const data = mapBudgetToTemplate({
+        form: currentBudget,
+        skProfile: skProfile
+      });
+      
+      console.log('Mapped budget data:', data);
+      
+      // Use the budget template
+      const templatePath = '/templates/budget_template.docx';
+      console.log('Using template path:', templatePath);
+      
+      const outputFileName = `SK_Budget_${skProfile?.barangay || 'Document'}_${currentBudget.year || '2024'}`;
+      console.log('Output filename:', outputFileName);
+      
+      await exportDocxFromTemplate({
+        templatePath,
+        data,
+        outputFileName,
+      });
+      
+      console.log('=== BUDGET EXPORT COMPLETED SUCCESSFULLY ===');
+      alert('Budget document exported successfully!');
+    } catch (e) {
+      console.error('Budget template export failed', e);
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      alert(`Export failed: ${errorMessage}`);
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     loadBudgets();
@@ -1604,7 +1588,31 @@ const Budget: React.FC = () => {
                         View/Edit
                       </button>
                       <button 
-                        onClick={() => {/* TODO: Export functionality */}}
+                        onClick={async () => {
+                          try {
+                            // Map budget data to template format
+                            const data = mapBudgetToTemplate({
+                              form: budget,
+                              skProfile: skProfile
+                            });
+                            
+                            // Use the budget template
+                            const templatePath = '/templates/budget_template.docx';
+                            const outputFileName = `SK_Budget_${skProfile?.barangay || 'Document'}_${budget.year || '2024'}`;
+                            
+                            await exportDocxFromTemplate({
+                              templatePath,
+                              data,
+                              outputFileName,
+                            });
+                            
+                            alert('Budget document exported successfully!');
+                          } catch (e) {
+                            console.error('Budget template export failed', e);
+                            const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+                            alert(`Export failed: ${errorMessage}`);
+                          }
+                        }}
                         className="btn-secondary flex items-center"
                       >
                         <Download className="h-4 w-4 mr-2" />
@@ -1780,6 +1788,7 @@ const Budget: React.FC = () => {
               </label>
             </div>
           </div>
+
 
           {/* Main Content - Hidden when preview is active or not editing */}
           {!preview && isEditing && (
@@ -2455,7 +2464,36 @@ const Budget: React.FC = () => {
             {/* Preview Section - Show when preview is true */}
             {preview && currentBudget && (
               <div className="space-y-6">
-                {generatePreviewContent()}
+                {/* Print Preview */}
+                <div className="bg-white border rounded-lg p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">Print Preview</h3>
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={exportToWord}
+                        className="btn-secondary flex items-center"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Export to Word
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Note about printing process */}
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg">
+                    <div className="flex items-start">
+                      <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium">Note about printing:</p>
+                        <p className="text-sm mt-1">
+                          To print the SK Annual Budget, you must first export it to Word, then manually add the logo to the downloaded document, and then print from there.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {generatePreviewContent()}
+                </div>
               </div>
             )}
         </div>
