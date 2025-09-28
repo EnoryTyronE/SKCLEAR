@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createABYIP, getABYIP, updateABYIP, deleteABYIP, uploadFile, getCBYDP, getAllABYIPs, clearAllABYIPs } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
+import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapABYIPToTemplate } from '../services/docxExport';
 
 interface ABYIPRow {
@@ -104,6 +104,25 @@ const ABYIP: React.FC = () => {
   const [cbydpProjects, setCbydpProjects] = useState<any[]>([]);
   const [cbydpCentersForProjects, setCbydpCentersForProjects] = useState<any[]>([]);
   const [selectedCbydpProjects, setSelectedCbydpProjects] = useState<number[]>([]);
+  const [expandedCenters, setExpandedCenters] = useState<{[key: number]: boolean}>({});
+  
+  // Toggle center expansion
+  const toggleCenter = (centerIndex: number) => {
+    setExpandedCenters(prev => ({
+      ...prev,
+      [centerIndex]: !prev[centerIndex]
+    }));
+  };
+
+  // Initialize expanded state for all centers (default to expanded)
+  useEffect(() => {
+    const initialExpandedState: {[key: number]: boolean} = {};
+    form.centers.forEach((_, index) => {
+      initialExpandedState[index] = true;
+    });
+    setExpandedCenters(initialExpandedState);
+  }, [form.centers.length]);
+  
   const [kkProofFile, setKkProofFile] = useState<File | null>(null);
   const [kkProofImage, setKkProofImage] = useState<string>('');
   const [kkApprovalDate, setKkApprovalDate] = useState<string>('');
@@ -1704,9 +1723,19 @@ const ABYIP: React.FC = () => {
               <div key={centerIdx} className="card">
                 <div className="card-header">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Center of Participation {centerIdx + 1}
-                    </h3>
+                    <div 
+                      className="flex items-center cursor-pointer flex-1"
+                      onClick={() => toggleCenter(centerIdx)}
+                    >
+                      <h3 className="text-lg font-semibold text-gray-900 mr-2">
+                        {center.name || `Center of Participation ${centerIdx + 1}`}
+                      </h3>
+                      {expandedCenters[centerIdx] ? (
+                        <ChevronDown className="h-5 w-5 text-gray-500" />
+                      ) : (
+                        <ChevronRight className="h-5 w-5 text-gray-500" />
+                      )}
+                    </div>
                     {form.status !== 'not_initiated' && form.centers.length > 1 && (
                       <button
                         type="button"
@@ -1722,6 +1751,8 @@ const ABYIP: React.FC = () => {
                   </div>
                 </div>
                 <div className="card-body">
+                  {expandedCenters[centerIdx] && (
+                    <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div>
                       <label className="form-label">Center Name</label>
@@ -2196,6 +2227,8 @@ const ABYIP: React.FC = () => {
                       </table>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

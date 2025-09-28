@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createCBYDP, getCBYDP, updateCBYDP, deleteCBYDP, uploadFile } from '../services/firebaseService';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FileText, Plus, Trash2, Save, CheckCircle, RefreshCw, Download, AlertCircle, Eye } from 'lucide-react';
+import { FileText, Plus, Trash2, Save, CheckCircle, RefreshCw, Download, AlertCircle, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
 
 interface CBYDPRow {
@@ -97,7 +97,25 @@ const CBYDP: React.FC = () => {
   const [kkProofImage, setKkProofImage] = useState<string>('');
   const [kkApprovalDate, setKkApprovalDate] = useState<string>('');
   const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
+  const [expandedCenters, setExpandedCenters] = useState<{[key: number]: boolean}>({});
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Toggle center expansion
+  const toggleCenter = (centerIndex: number) => {
+    setExpandedCenters(prev => ({
+      ...prev,
+      [centerIndex]: !prev[centerIndex]
+    }));
+  };
+
+  // Initialize expanded state for all centers (default to expanded)
+  useEffect(() => {
+    const initialExpandedState: {[key: number]: boolean} = {};
+    form.centers.forEach((_, index) => {
+      initialExpandedState[index] = true;
+    });
+    setExpandedCenters(initialExpandedState);
+  }, [form.centers.length]);
 
   // Number formatting utility functions
   const formatNumber = (value: string | number): string => {
@@ -1972,9 +1990,19 @@ const CBYDP: React.FC = () => {
               <div key={centerIdx} className="card">
                 <div className="card-header">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Center of Participation {centerIdx + 1}
-                    </h3>
+                    <div 
+                      className="flex items-center cursor-pointer flex-1"
+                      onClick={() => toggleCenter(centerIdx)}
+                    >
+                      <h3 className="text-lg font-semibold text-gray-900 mr-2">
+                        {center.name || `Center of Participation ${centerIdx + 1}`}
+                      </h3>
+                      {expandedCenters[centerIdx] ? (
+                        <ChevronDown className="h-5 w-5 text-gray-500" />
+                      ) : (
+                        <ChevronRight className="h-5 w-5 text-gray-500" />
+                      )}
+                    </div>
                     {form.centers.length > 1 && (
                       <button
                         type="button"
@@ -1987,6 +2015,8 @@ const CBYDP: React.FC = () => {
                   </div>
                 </div>
                 <div className="card-body">
+                  {expandedCenters[centerIdx] && (
+                    <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div>
                       <label className="form-label">Center Name</label>
@@ -2289,6 +2319,8 @@ const CBYDP: React.FC = () => {
                       </table>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
