@@ -5,7 +5,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, CheckCircle, RefreshCw, Download, AlertCircle, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
-import { logCBYDPActivity } from '../services/activityService';
+import { logCBYDPActivity, formatTimeAgo, convertToDate } from '../services/activityService';
 
 interface CBYDPRow {
   concern: string;
@@ -1096,6 +1096,19 @@ const CBYDP: React.FC = () => {
       if (form.status === 'rejected' && existingCBYDPId) {
         console.log('Deleting old rejected CBYDP:', existingCBYDPId);
         await deleteCBYDP(existingCBYDPId);
+        
+        // Log activity
+        try {
+          await logCBYDPActivity(
+            'Deleted',
+            'Rejected CBYDP has been deleted during re-initiation',
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+        } catch (activityError) {
+          console.error('Error logging CBYDP delete activity:', activityError);
+        }
+        
         setExistingCBYDPId(null);
       }
 
@@ -1194,6 +1207,18 @@ const CBYDP: React.FC = () => {
       // Delete the old pending CBYDP
       if (existingCBYDPId) {
         await deleteCBYDP(existingCBYDPId);
+        
+        // Log activity
+        try {
+          await logCBYDPActivity(
+            'Deleted',
+            'Pending CBYDP has been deleted after approval',
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+        } catch (activityError) {
+          console.error('Error logging CBYDP delete activity:', activityError);
+        }
       }
 
       // Update the form state with the new approved CBYDP
@@ -1250,6 +1275,18 @@ const CBYDP: React.FC = () => {
        if (existingCBYDPId) {
          await deleteCBYDP(existingCBYDPId);
          console.log('Current CBYDP deleted successfully');
+         
+         // Log activity
+         try {
+           await logCBYDPActivity(
+             'Deleted',
+             'Approved CBYDP has been deleted/reset',
+             { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+             'completed'
+           );
+         } catch (activityError) {
+           console.error('Error logging CBYDP delete activity:', activityError);
+         }
        }
 
        // Reset form to initial state
@@ -1343,6 +1380,11 @@ const CBYDP: React.FC = () => {
                  {form.lastEditedBy && (
                    <span className="text-sm text-blue-700">
                      Last edited by: {form.lastEditedBy}
+                     {form.lastEditedAt && (
+                       <span className="text-gray-500 ml-1">
+                         ({formatTimeAgo(convertToDate(form.lastEditedAt))})
+                       </span>
+                     )}
                    </span>
                  )}
                                    {form.status === 'approved' && form.approvedBy && (

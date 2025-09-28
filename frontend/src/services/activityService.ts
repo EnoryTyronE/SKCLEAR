@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { collection, addDoc, getDocs, query, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, where, Timestamp, startAfter, DocumentSnapshot } from 'firebase/firestore';
 
 export interface Activity {
   id?: string;
@@ -73,6 +73,95 @@ export const getRecentActivities = async (limitCount: number = 10): Promise<Acti
   } catch (error) {
     console.error('Error fetching activities:', error);
     return [];
+  }
+};
+
+// Get all activities with filtering and pagination
+export const getAllActivities = async (
+  filters?: {
+    type?: string;
+    module?: string;
+    memberId?: string;
+    status?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+  },
+  pageSize: number = 50,
+  lastDoc?: DocumentSnapshot
+): Promise<{ activities: Activity[]; lastDoc?: DocumentSnapshot; hasMore: boolean }> => {
+  try {
+    console.log('Fetching all activities with filters:', filters);
+    
+    // Build query constraints
+    const whereConstraints = [];
+    const orderByConstraints = [orderBy('timestamp', 'desc')];
+    
+    // Apply filters
+    if (filters?.type) {
+      whereConstraints.push(where('type', '==', filters.type));
+    }
+    if (filters?.module) {
+      whereConstraints.push(where('module', '==', filters.module));
+    }
+    if (filters?.memberId) {
+      whereConstraints.push(where('member.id', '==', filters.memberId));
+    }
+    if (filters?.status) {
+      whereConstraints.push(where('status', '==', filters.status));
+    }
+    if (filters?.dateFrom) {
+      whereConstraints.push(where('timestamp', '>=', Timestamp.fromDate(filters.dateFrom)));
+    }
+    if (filters?.dateTo) {
+      whereConstraints.push(where('timestamp', '<=', Timestamp.fromDate(filters.dateTo)));
+    }
+
+    console.log('Where constraints:', whereConstraints);
+    console.log('Order by constraints:', orderByConstraints);
+
+    let q = query(collection(db, 'activities'), ...whereConstraints, ...orderByConstraints);
+
+    // Apply pagination
+    if (lastDoc) {
+      q = query(q, startAfter(lastDoc));
+    }
+    q = query(q, limit(pageSize + 1)); // Get one extra to check if there are more
+
+    const querySnapshot = await getDocs(q);
+    const activities: Activity[] = [];
+    
+    console.log('Found', querySnapshot.size, 'activities in Firebase');
+    
+    let hasMore = false;
+    let newLastDoc: DocumentSnapshot | undefined;
+
+    let index = 0;
+    querySnapshot.forEach((doc) => {
+      if (index < pageSize) {
+        const data = doc.data();
+        activities.push({
+          id: doc.id,
+          type: data.type,
+          title: data.title,
+          description: data.description,
+          member: data.member,
+          timestamp: data.timestamp?.toDate() || new Date(),
+          status: data.status,
+          module: data.module,
+          details: data.details
+        });
+        newLastDoc = doc;
+      } else {
+        hasMore = true;
+      }
+      index++;
+    });
+    
+    console.log('Returning activities:', activities.length, 'hasMore:', hasMore);
+    return { activities, lastDoc: newLastDoc, hasMore };
+  } catch (error) {
+    console.error('Error fetching all activities:', error);
+    return { activities: [], hasMore: false };
   }
 };
 
@@ -157,8 +246,23 @@ export const logTransparencyActivity = async (
   });
 };
 
+// Convert Firestore timestamp to Date
+export const convertToDate = (firebaseTimestamp: any): Date | null => {
+  if (!firebaseTimestamp) return null;
+  if (firebaseTimestamp instanceof Date) return firebaseTimestamp;
+  if (typeof firebaseTimestamp.toDate === 'function') return firebaseTimestamp.toDate();
+  if (typeof firebaseTimestamp === 'string' || typeof firebaseTimestamp === 'number') {
+    const date = new Date(firebaseTimestamp);
+    return isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+};
+
 // Format time ago
-export const formatTimeAgo = (date: Date): string => {
+export const formatTimeAgo = (date: Date | null | undefined): string => {
+  if (!date) return 'N/A';
+  if (!(date instanceof Date) || isNaN(date.getTime())) return 'Invalid Date';
+  
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   

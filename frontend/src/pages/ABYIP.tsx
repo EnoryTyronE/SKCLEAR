@@ -5,7 +5,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapABYIPToTemplate } from '../services/docxExport';
-import { logABYIPActivity } from '../services/activityService';
+import { logABYIPActivity, formatTimeAgo, convertToDate } from '../services/activityService';
 
 interface ABYIPRow {
   referenceCode: string;
@@ -611,6 +611,18 @@ const ABYIP: React.FC = () => {
       // Delete the current approved ABYIP
       if (existingABYIPId) {
         await deleteABYIP(existingABYIPId);
+        
+        // Log activity
+        try {
+          await logABYIPActivity(
+            'Deleted',
+            `ABYIP for ${form.year} has been deleted`,
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+        } catch (activityError) {
+          console.error('Error logging ABYIP delete activity:', activityError);
+        }
       }
 
       // Reset form to initial state
@@ -983,6 +995,16 @@ const ABYIP: React.FC = () => {
                   Initiated by: {form.initiatedBy}
                 </span>
               )}
+              {form.lastEditedBy && (
+                <span className="text-sm text-blue-700">
+                  Last edited by: {form.lastEditedBy}
+                  {form.lastEditedAt && (
+                    <span className="text-gray-500 ml-1">
+                      ({formatTimeAgo(convertToDate(form.lastEditedAt))})
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1002,7 +1024,7 @@ const ABYIP: React.FC = () => {
             </div>
             <div>
               <span className="font-medium text-blue-700">Created:</span>
-              <div className="text-gray-600">{form.initiatedAt ? new Date(form.initiatedAt).toLocaleDateString() : 'N/A'}</div>
+              <div className="text-gray-600">{form.initiatedAt ? convertToDate(form.initiatedAt)?.toLocaleDateString() || 'Invalid Date' : 'N/A'}</div>
             </div>
           </div>
         </div>
@@ -1277,6 +1299,18 @@ const ABYIP: React.FC = () => {
                 setError('');
                 
                 await clearAllABYIPs();
+                
+                // Log activity
+                try {
+                  await logABYIPActivity(
+                    'Deleted All',
+                    'All ABYIPs have been cleared/deleted',
+                    { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+                    'completed'
+                  );
+                } catch (activityError) {
+                  console.error('Error logging ABYIP clear all activity:', activityError);
+                }
                 
                 // Reset form state
                 setForm({
@@ -2419,6 +2453,19 @@ const ABYIP: React.FC = () => {
                           if (abyip.id && window.confirm('Are you sure you want to delete this ABYIP?')) {
                             try {
                               await deleteABYIP(abyip.id);
+                              
+                              // Log activity
+                              try {
+                                await logABYIPActivity(
+                                  'Deleted',
+                                  `ABYIP for ${abyip.year} has been deleted`,
+                                  { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+                                  'completed'
+                                );
+                              } catch (activityError) {
+                                console.error('Error logging ABYIP delete activity:', activityError);
+                              }
+                              
                               loadAllABYIPs();
                             } catch (error) {
                               setError('Failed to delete ABYIP');

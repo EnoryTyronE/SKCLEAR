@@ -12,7 +12,7 @@ import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapBudgetToTemplate } from '../services/docxExport';
-import { logBudgetActivity } from '../services/activityService';
+import { logBudgetActivity, formatTimeAgo, convertToDate } from '../services/activityService';
 
 // Interface definitions based on the template structure
 interface BudgetReceipt {
@@ -83,6 +83,8 @@ interface SKAnnualBudget {
   approvedAt?: Date;
   rejectedBy?: string;
   rejectedAt?: Date;
+  lastEditedBy?: string;
+  lastEditedAt?: Date;
   rejectionReason?: string;
 }
 
@@ -266,6 +268,7 @@ const Budget: React.FC = () => {
   const loadBudgetByYear = useCallback(async (year: number) => {
     try {
       setLoading(true);
+      setSelectedBudgetYear(year.toString()); // Set the selected year
       const budgetData = await getSKAnnualBudget(year.toString());
       
       if (budgetData) {
@@ -345,6 +348,12 @@ const Budget: React.FC = () => {
       } else {
         await updateSKAnnualBudget(currentBudget.id!, budgetData);
         
+        // Update the current budget state with the new timestamp
+        setCurrentBudget(prevBudget => ({
+          ...prevBudget!,
+          ...budgetData
+        }));
+        
         // Log activity
         await logBudgetActivity(
           'Updated',
@@ -355,9 +364,9 @@ const Budget: React.FC = () => {
       }
 
       setError('');
-      setIsEditing(false);
-      setIsCreating(false);
-      loadBudgets();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      loadBudgets(); // Keep this to refresh the budget list data
     } catch (err) {
       console.error('Error saving budget:', err);
       setError('Failed to save budget');
@@ -991,15 +1000,23 @@ const Budget: React.FC = () => {
     if (!currentBudget?.id) return;
     
     try {
+      const now = new Date();
       const budgetData = {
         ...updatedBudget,
         // Add SK members to the budget data (like ABYIP)
         skMembers: skMembers,
         lastEditedBy: user?.name,
-        lastEditedAt: new Date()
+        lastEditedAt: now
       };
       
       await updateSKAnnualBudget(currentBudget.id, budgetData);
+      
+      // Update the current budget state with the new timestamp
+      setCurrentBudget(prevBudget => ({
+        ...prevBudget!,
+        ...budgetData
+      }));
+      
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
@@ -1483,6 +1500,16 @@ const Budget: React.FC = () => {
                                 Initiated by: {budgetForYear.initiatedBy}
                               </span>
                             )}
+                            {budgetForYear.lastEditedBy && (
+                              <span className="text-sm text-blue-700">
+                                Last edited by: {budgetForYear.lastEditedBy}
+                                {budgetForYear.lastEditedAt && (
+                                  <span className="text-gray-500 ml-1">
+                                    ({formatTimeAgo(convertToDate(budgetForYear.lastEditedAt))})
+                                  </span>
+                                )}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1502,7 +1529,7 @@ const Budget: React.FC = () => {
                           </div>
                           <div>
                             <span className="font-medium text-blue-700">Created:</span>
-                            <div className="text-gray-600">{budgetForYear.initiatedAt ? new Date(budgetForYear.initiatedAt).toLocaleDateString() : 'N/A'}</div>
+                            <div className="text-gray-600">{budgetForYear.initiatedAt ? convertToDate(budgetForYear.initiatedAt)?.toLocaleDateString() || 'Invalid Date' : 'N/A'}</div>
                           </div>
                         </div>
                       </>
@@ -1658,6 +1685,19 @@ const Budget: React.FC = () => {
                           if (budget.id && window.confirm('Are you sure you want to delete this budget?')) {
                             try {
                               await deleteSKAnnualBudget(budget.id);
+                              
+                              // Log activity
+                              try {
+                                await logBudgetActivity(
+                                  'Deleted',
+                                  `SK Annual Budget for ${budget.year} has been deleted`,
+                                  { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+                                  'completed'
+                                );
+                              } catch (activityError) {
+                                console.error('Error logging Budget delete activity:', activityError);
+                              }
+                              
                               loadBudgets();
                             } catch (error) {
                               setError('Failed to delete budget');
@@ -1770,6 +1810,18 @@ const Budget: React.FC = () => {
                       if (budget.id) {
                         await deleteSKAnnualBudget(budget.id);
                       }
+                    }
+                    
+                    // Log activity
+                    try {
+                      await logBudgetActivity(
+                        'Deleted All',
+                        `All SK Annual Budgets (${budgets.length} budgets) have been deleted`,
+                        { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+                        'completed'
+                      );
+                    } catch (activityError) {
+                      console.error('Error logging Budget delete all activity:', activityError);
                     }
                     
                     // Reset state
