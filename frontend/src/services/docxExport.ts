@@ -538,6 +538,25 @@ export function mapBudgetToTemplate(payload: any) {
   let chairpersonName = memberNames.chairperson?.name || '';
   let treasurerName = memberNames.treasurer?.name || '';
 
+  // Fallback: Use skMembers from Budget data if getMemberNames doesn't work
+  if (!treasurerName || !chairpersonName) {
+    const skMembers = budget?.skMembers || payload.skMembers || [];
+    console.log('DEBUG - Using skMembers from Budget data:', skMembers);
+    
+    const treasurer = skMembers.find((m: any) => m.role === 'treasurer');
+    const chairperson = skMembers.find((m: any) => m.role === 'chairperson');
+    
+    if (treasurer && !treasurerName) {
+      treasurerName = treasurer.name || '';
+      console.log('DEBUG - Found treasurer from Budget skMembers:', treasurerName);
+    }
+    
+    if (chairperson && !chairpersonName) {
+      chairpersonName = chairperson.name || '';
+      console.log('DEBUG - Found chairperson from Budget skMembers:', chairpersonName);
+    }
+  }
+
   const fmt = (n: number) => (typeof n === 'number' ? n.toLocaleString() : '');
   const dateStr = budget?.sk_resolution_date
     ? new Date(budget.sk_resolution_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -564,11 +583,6 @@ export function mapBudgetToTemplate(payload: any) {
     // Amounts
     total_budget: fmt(budget?.total_budget || 0),
 
-    // Prepared by section (for signatures)
-    prepared_by: {
-      treasurer: treasurerName || 'SK Treasurer Name',
-      chairperson: chairpersonName || 'SK Chairperson Name',
-    },
 
     // Receipts (Part I)
     receipts: (budget?.receipts || []).map((r: any) => ({
@@ -596,7 +610,7 @@ export function mapBudgetToTemplate(payload: any) {
       duration: generalAdministration.items
         .filter((i: any) => i.expenditure_class === 'MOOE')
         .map((i: any) => i.duration || '')
-        .join('\n'),
+        .join('\n\n'),
       mooe: fmt(generalAdministration.items
         .filter((i: any) => i.expenditure_class === 'MOOE')
         .reduce((sum: number, i: any) => sum + (i.amount || 0), 0)),
@@ -614,7 +628,7 @@ export function mapBudgetToTemplate(payload: any) {
       duration: generalAdministration.items
         .filter((i: any) => i.expenditure_class === 'CO')
         .map((i: any) => i.duration || '')
-        .join('\n'),
+        .join('\n\n'),
       mooe: '',
       co: fmt(generalAdministration.items
         .filter((i: any) => i.expenditure_class === 'CO')
@@ -632,7 +646,7 @@ export function mapBudgetToTemplate(payload: any) {
       duration: generalAdministration.items
         .filter((i: any) => i.expenditure_class === 'PS')
         .map((i: any) => i.duration || '')
-        .join('\n'),
+        .join('\n\n'),
       mooe: '',
       co: '',
       ps: fmt(generalAdministration.items
@@ -752,9 +766,9 @@ export function mapBudgetToTemplate(payload: any) {
     'ordinance_no': String(result.ordinance_no || ''),
     'ordinance_series': String(result.ordinance_series || ''),
     'total_budget': String(result.total_budget || ''),
-    // Flattened prepared_by structure
-    'prepared_by.treasurer': String(result.prepared_by?.treasurer || ''),
-    'prepared_by.chairperson': String(result.prepared_by?.chairperson || ''),
+    // Flattened prepared_by structure (like ABYIP)
+    'prepared_by.treasurer': String(treasurerName),
+    'prepared_by.chairperson': String(chairpersonName),
     // Flattened totals structure to prevent undefined values
     'receipts_totals.mooe': String(result.receipts_totals?.mooe || '0'),
     'receipts_totals.co': String(result.receipts_totals?.co || '0'),
@@ -787,6 +801,8 @@ export function mapBudgetToTemplate(payload: any) {
   console.log('DEBUG - yd_items array:', finalResult.yd_items);
   console.log('DEBUG - yd_items array length:', finalResult.yd_items?.length);
   console.log('DEBUG - member names:', { treasurerName, chairpersonName, secretaryName });
+  console.log('DEBUG - prepared_by.treasurer in finalResult:', finalResult['prepared_by.treasurer']);
+  console.log('DEBUG - prepared_by.chairperson in finalResult:', finalResult['prepared_by.chairperson']);
   return finalResult;
 }
 

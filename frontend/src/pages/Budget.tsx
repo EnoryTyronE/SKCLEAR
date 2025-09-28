@@ -68,6 +68,7 @@ interface SKAnnualBudget {
   status: 'not_initiated' | 'open_for_editing' | 'pending_approval' | 'approved' | 'rejected';
   receipts: BudgetReceipt[];
   programs: BudgetProgram[];
+  skMembers?: any[]; // Add SK members like ABYIP
   created_by?: string;
   created_at?: any;
   updated_at?: any;
@@ -312,6 +313,8 @@ const Budget: React.FC = () => {
         barangay_name: skProfile?.barangay || currentBudget.barangay_name,
         city_municipality: skProfile?.city || currentBudget.city_municipality,
         province: skProfile?.province || currentBudget.province,
+        // Add SK members to the budget data (like ABYIP)
+        skMembers: skMembers,
         created_by: user?.uid || ''
       };
 
@@ -961,6 +964,8 @@ const Budget: React.FC = () => {
     try {
       const budgetData = {
         ...updatedBudget,
+        // Add SK members to the budget data (like ABYIP)
+        skMembers: skMembers,
         lastEditedBy: user?.name,
         lastEditedAt: new Date()
       };
@@ -1308,7 +1313,8 @@ const Budget: React.FC = () => {
       // Map budget data to template format
       const data = mapBudgetToTemplate({
         form: currentBudget,
-        skProfile: skProfile
+        skProfile: skProfile,
+        skMembers: skMembers // Pass the SK members from component state
       });
       
       console.log('Mapped budget data:', data);
