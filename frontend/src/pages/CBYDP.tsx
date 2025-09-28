@@ -5,6 +5,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, CheckCircle, RefreshCw, Download, AlertCircle, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapCBYDPToTemplate } from '../services/docxExport';
+import { logCBYDPActivity } from '../services/activityService';
 
 interface CBYDPRow {
   concern: string;
@@ -1037,11 +1038,27 @@ const CBYDP: React.FC = () => {
         console.log('Updating existing CBYDP with ID:', existingCBYDPId);
         await updateCBYDP(existingCBYDPId, cbydpData);
         console.log('CBYDP updated successfully');
+        
+        // Log activity
+        await logCBYDPActivity(
+          'Updated',
+          `CBYDP has been updated with ${form.centers.length} centers of participation`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
       } else {
         console.log('Creating new CBYDP');
         const newId = await createCBYDP(cbydpData);
         console.log('New CBYDP created with ID:', newId);
         setExistingCBYDPId(newId);
+        
+        // Log activity
+        await logCBYDPActivity(
+          'Created',
+          `CBYDP has been created with ${form.centers.length} centers of participation`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
       }
 
       setSaved(true);

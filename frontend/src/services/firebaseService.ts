@@ -398,19 +398,11 @@ export const createABYIP = async (abyipData: any) => {
 
 export const getABYIP = async (year: string) => {
   try {
-    const user = auth.currentUser;
-    if (!user) throw new Error('User not authenticated');
+    console.log('Getting ABYIP for year:', year);
 
-    console.log('Getting ABYIP for year:', year, 'user:', user.uid);
-
-    // First get all ABYIPs for the user, then filter by year in JavaScript
-    // This avoids the need for any indexes
-    const q = query(
-      collection(db, 'abyip'),
-      where('createdBy', '==', user.uid)
-    );
-    
-    const querySnapshot = await getDocs(q);
+    // Get all ABYIPs, then filter by year in JavaScript
+    // This allows all SK members to see ABYIPs (like CBYDP)
+    const querySnapshot = await getDocs(collection(db, 'abyip'));
     console.log('ABYIP query result:', querySnapshot.docs.length, 'documents found');
     
     // Filter by year in JavaScript
@@ -432,32 +424,26 @@ export const getABYIP = async (year: string) => {
   }
 };
 
-// Get all ABYIPs for a user (for debugging and management)
+// Get all ABYIPs (for debugging and management)
 export const getAllABYIPs = async () => {
   try {
-    const user = auth.currentUser;
-    if (!user) throw new Error('User not authenticated');
+    console.log('Getting all ABYIPs...');
 
-    // Simplified query without orderBy to avoid index issues
-    const q = query(
-      collection(db, 'abyip'),
-      where('createdBy', '==', user.uid)
-    );
-    
-    const querySnapshot = await getDocs(q);
+    // Get all ABYIPs (like CBYDP) - no user filtering
+    const querySnapshot = await getDocs(collection(db, 'abyip'));
     const abyips = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
     
-    // Sort by creation date in JavaScript instead
+    // Sort by creation date in JavaScript
     abyips.sort((a, b) => {
       const dateA = (a as any).createdAt?.toDate?.() || new Date(0);
       const dateB = (b as any).createdAt?.toDate?.() || new Date(0);
       return dateB.getTime() - dateA.getTime(); // Descending order
     });
     
-    console.log('All ABYIPs for user:', abyips);
+    console.log('All ABYIPs:', abyips);
     return abyips;
   } catch (error) {
     console.error('Error getting all ABYIPs:', error);

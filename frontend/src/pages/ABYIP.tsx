@@ -5,6 +5,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FileText, Plus, Trash2, Save, Eye, CheckCircle, AlertCircle, RefreshCw, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapABYIPToTemplate } from '../services/docxExport';
+import { logABYIPActivity } from '../services/activityService';
 
 interface ABYIPRow {
   referenceCode: string;
@@ -819,11 +820,39 @@ const ABYIP: React.FC = () => {
         console.log('Updating existing ABYIP...');
         await updateABYIP(existingABYIPId, payload as any);
         console.log('ABYIP updated successfully');
+        
+        // Log activity
+        try {
+          await logABYIPActivity(
+            'Updated',
+            `ABYIP for ${form.year} has been updated with ${form.centers.length} centers`,
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+          console.log('ABYIP activity logged successfully');
+        } catch (activityError) {
+          console.error('Error logging ABYIP activity:', activityError);
+          // Don't fail the save operation if activity logging fails
+        }
       } else {
         console.log('Creating new ABYIP...');
         const id = await createABYIP(payload as any);
         setExistingABYIPId(id);
         console.log('ABYIP created successfully with ID:', id);
+        
+        // Log activity
+        try {
+          await logABYIPActivity(
+            'Created',
+            `ABYIP for ${form.year} has been created with ${form.centers.length} centers`,
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+          console.log('ABYIP activity logged successfully');
+        } catch (activityError) {
+          console.error('Error logging ABYIP activity:', activityError);
+          // Don't fail the save operation if activity logging fails
+        }
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -849,6 +878,7 @@ const ABYIP: React.FC = () => {
       loadExistingABYIP();
     }
   }, [form.year, loadExistingABYIP]);
+
 
   return (
     <div className="p-6">

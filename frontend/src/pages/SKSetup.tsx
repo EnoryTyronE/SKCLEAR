@@ -6,6 +6,7 @@ import { doc, setDoc, collection, getDocs, deleteDoc, updateDoc } from 'firebase
 import { auth, db } from '../firebase';
 import { Shield, Upload, Save, Edit, CheckCircle, AlertCircle, UserPlus, Users, Trash2, Eye, EyeOff, X, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { logSetupActivity } from '../services/activityService';
 
 interface SKProfile {
   logo: string | null;
@@ -476,11 +477,27 @@ const SKSetup: React.FC = () => {
         await updateSKProfile(existingProfileId, profileData);
         profileId = existingProfileId;
         console.log('Profile updated successfully');
+        
+        // Log activity
+        await logSetupActivity(
+          'Profile Updated',
+          `SK Profile for ${profile.barangay}, ${profile.city} has been updated`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
       } else {
         console.log('Creating new profile...');
         profileId = await createSKProfile(profileData);
         setExistingProfileId(profileId);
         console.log('New profile created with ID:', profileId);
+        
+        // Log activity
+        await logSetupActivity(
+          'Profile Created',
+          `SK Profile for ${profile.barangay}, ${profile.city} has been created`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
       }
 
       setSKProfile({ ...profile, logo: logoUrl });
@@ -576,6 +593,14 @@ const SKSetup: React.FC = () => {
 
       setMessage('User created successfully!');
       setIsSuccess(true);
+      
+      // Log activity
+      await logSetupActivity(
+        'User Created',
+        `New SK member "${formData.name}" (${formData.role}) has been added to the system`,
+        { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+        'completed'
+      );
       
       await fetchMembers();
 

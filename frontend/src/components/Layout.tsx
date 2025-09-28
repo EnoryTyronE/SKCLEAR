@@ -32,7 +32,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'SK Setup', href: '/sk-setup', icon: Users, role: 'chairperson' },
     { name: 'CBYDP', href: '/cbydp', icon: FileText },
-    { name: 'ABYIP', href: '/abyip', icon: Calendar, role: 'chairperson' },
+    { name: 'ABYIP', href: '/abyip', icon: Calendar },
     { name: 'Budget', href: '/budget', icon: DollarSign, role: 'treasurer' },
     { name: 'Projects', href: '/projects', icon: Target },
     { name: 'Transparency', href: '/transparency', icon: Eye },

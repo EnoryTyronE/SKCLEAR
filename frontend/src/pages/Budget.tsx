@@ -12,6 +12,7 @@ import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DollarSign, Plus, Save, Trash2, Download, FileText, RefreshCw, Eye, CheckCircle, Clock, X, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportDocxFromTemplate, mapBudgetToTemplate } from '../services/docxExport';
+import { logBudgetActivity } from '../services/activityService';
 
 // Interface definitions based on the template structure
 interface BudgetReceipt {
@@ -333,8 +334,24 @@ const Budget: React.FC = () => {
       if (isCreating) {
         const budgetId = await createSKAnnualBudget(budgetData);
         setCurrentBudget({ ...currentBudget, id: budgetId });
+        
+        // Log activity
+        await logBudgetActivity(
+          'Created',
+          `SK Annual Budget for ${budgetData.year} has been created`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
       } else {
         await updateSKAnnualBudget(currentBudget.id!, budgetData);
+        
+        // Log activity
+        await logBudgetActivity(
+          'Updated',
+          `SK Annual Budget for ${budgetData.year} has been updated`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
       }
 
       setError('');
