@@ -17,11 +17,106 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getRecentActivities, formatTimeAgo, Activity } from '../services/activityService';
+import { 
+  getAllSKAnnualBudgets, 
+  getAllABYIPs, 
+  getAllCBYDP,
+  getProjectsByYear 
+} from '../services/firebaseService';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [stats, setStats] = useState({
+    activeProjects: 0,
+    budgetCommitted: 0,
+    budgetUsed: 0,
+    pendingApprovals: 0
+  });
+
+  // Helper: parse numeric amounts that may be strings with commas
+  const parseCurrency = (val: any): number => {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === 'number') return isFinite(val) ? val : 0;
+    if (typeof val === 'string') {
+      const n = parseFloat(val.toString().replace(/,/g, ''));
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+
+  // Helper: compute one ABYIP document's committed total
+  const computeAbyipCommitted = (abyip: any): number => {
+    const centers = abyip?.centers || [];
+    return centers.reduce((sum: number, center: any) => {
+      // Prefer explicit center subtotals if present
+      const subtotal = parseCurrency(center?.centerSubtotal) +
+        parseCurrency(center?.centerSubtotalMOOE) +
+        parseCurrency(center?.centerSubtotalCO) +
+        parseCurrency(center?.centerSubtotalPS);
+      if (subtotal > 0) return sum + subtotal;
+
+      // Fallback: sum projects' budgets within this center
+      const projects = center?.projects || [];
+      const projSum = projects.reduce((s: number, p: any) => {
+        const mooe = parseCurrency(p?.budget?.mooe ?? p?.mooe ?? p?.mooe_amount);
+        const co = parseCurrency(p?.budget?.co ?? p?.co ?? p?.co_amount);
+        const ps = parseCurrency(p?.budget?.ps ?? p?.ps ?? p?.ps_amount);
+        return s + mooe + co + ps;
+      }, 0);
+      return sum + projSum;
+    }, 0);
+  };
+
+  // Fetch dashboard statistics
+  const fetchStats = async () => {
+    try {
+      // Fetch all data in parallel
+      const [budgets, abyips, cbydps, projects] = await Promise.all([
+        getAllSKAnnualBudgets(),
+        getAllABYIPs(),
+        getAllCBYDP(),
+        getProjectsByYear(selectedYear)
+      ]);
+
+      // Calculate Active Projects (ongoing projects for selected year)
+      const activeProjects = projects.filter((project: any) => 
+        project.status === 'ongoing' && 
+        project.year === selectedYear
+      ).length;
+
+      // Calculate Budget Committed (sum of ABYIP totals for selected year)
+      const budgetCommitted = (abyips
+        .filter((abyip: any) => abyip.year === selectedYear)
+        .reduce((sum: number, abyip: any) => sum + computeAbyipCommitted(abyip), 0)) || 0;
+
+      // Calculate Budget Used (from finished projects for selected year)
+      const budgetUsed = projects
+        .filter((project: any) => 
+          project.status === 'finished' && 
+          project.year === selectedYear
+        )
+        .reduce((sum: number, project: any) => sum + (project.amount || 0), 0);
+
+      // Calculate Pending Approvals (budgets and ABYIPs pending approval)
+      const pendingApprovals = [
+        ...budgets.filter((budget: any) => budget.status === 'pending_approval'),
+        ...abyips.filter((abyip: any) => abyip.status === 'pending_kk_approval'),
+        ...cbydps.filter((cbydp: any) => cbydp.status === 'pending_kk_approval')
+      ].length;
+
+      setStats({
+        activeProjects,
+        budgetCommitted,
+        budgetUsed,
+        pendingApprovals
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
 
   // Fetch recent activities
   const fetchActivities = async () => {
@@ -41,14 +136,21 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchActivities();
+    fetchStats();
   }, []);
 
-  // Refresh activities when the page becomes visible (user navigates back)
+  // Refetch stats when selected year changes
+  useEffect(() => {
+    fetchStats();
+  }, [selectedYear]);
+
+  // Refresh activities and stats when the page becomes visible (user navigates back)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        console.log('Page became visible, refreshing activities...');
+        console.log('Page became visible, refreshing activities and stats...');
         fetchActivities();
+        fetchStats();
       }
     };
 
@@ -58,35 +160,45 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Vital KPIs (placeholder values; hook up to real queries later)
-  const stats = [
+  // Format currency helper
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  // Dynamic stats based on real data
+  const statsData = [
     {
       name: 'Active Projects',
-      value: '—',
-      sub: 'Ongoing this year',
+      value: stats.activeProjects.toString(),
+      sub: `Ongoing in ${selectedYear}`,
       icon: TrendingUp,
       color: 'bg-green-500',
       href: '/projects'
     },
     {
       name: 'Budget Committed',
-      value: '—',
-      sub: 'Sum of ABYIP totals',
+      value: formatCurrency(stats.budgetCommitted),
+      sub: `ABYIP totals for ${selectedYear}`,
       icon: DollarSign,
       color: 'bg-yellow-500',
       href: '/budget'
     },
     {
       name: 'Budget Used',
-      value: '—',
-      sub: 'From finished projects',
+      value: formatCurrency(stats.budgetUsed),
+      sub: `From finished projects in ${selectedYear}`,
       icon: DollarSign,
       color: 'bg-indigo-500',
       href: '/projects'
     },
     {
       name: 'Pending Approvals',
-      value: '—',
+      value: stats.pendingApprovals.toString(),
       sub: 'Awaiting KK/LCE',
       icon: AlertCircle,
       color: 'bg-red-500',
@@ -177,18 +289,37 @@ const Dashboard: React.FC = () => {
               Here's what's happening with your SK Management System today.
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Current Role</p>
-            <p className="text-lg font-semibold text-primary-600 capitalize">
-              {user?.role?.replace('_', ' ')}
-            </p>
+          <div className="flex items-center space-x-6">
+            <div className="text-right">
+              <p className="text-sm text-gray-500">View Year</p>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="text-lg font-semibold text-primary-600 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer"
+              >
+                {Array.from({ length: 5 }, (_, i) => {
+                  const year = new Date().getFullYear() - 2 + i;
+                  return (
+                    <option key={year} value={year.toString()}>
+                      {year}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-500">Current Role</p>
+              <p className="text-lg font-semibold text-primary-600 capitalize">
+                {user?.role?.replace('_', ' ')}
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat) => {
+        {statsData.map((stat) => {
           const Icon = stat.icon;
           return (
             <Link
@@ -243,7 +374,10 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Recent Activities</h3>
             <button
-              onClick={fetchActivities}
+              onClick={() => {
+                fetchActivities();
+                fetchStats();
+              }}
               className="text-sm text-blue-600 hover:text-blue-700 flex items-center"
               disabled={loading}
             >

@@ -632,7 +632,8 @@ export interface ProjectDoc {
   amount?: number;
   period?: string;
   attachments?: Array<{
-    name: string;
+    name: string; // display name
+    description?: string; // optional description provided by user
     url: string;
     uploadedAt: any;
   }>;
@@ -688,7 +689,11 @@ export const updateProjectStatus = async (projectId: string, status: ProjectDoc[
   }
 };
 
-export const addProjectAttachment = async (projectId: string, file: File) => {
+export const addProjectAttachment = async (
+  projectId: string,
+  file: File,
+  meta?: { name?: string; description?: string }
+) => {
   try {
     const url = await uploadFile(file, 'projects');
     const projectRef = doc(db, 'projects', projectId);
@@ -696,7 +701,7 @@ export const addProjectAttachment = async (projectId: string, file: File) => {
     const existing = projectSnap.exists() ? (projectSnap.data() as any).attachments || [] : [];
     const next = [
       ...existing,
-      { name: file.name, url, uploadedAt: new Date() }
+      { name: meta?.name || file.name, description: meta?.description || '', url, uploadedAt: new Date() }
     ];
     await updateDoc(projectRef, { attachments: next, updatedAt: serverTimestamp() });
     return url;
@@ -735,7 +740,7 @@ export interface ProjectUpdateDoc {
   date: any; // Timestamp | Date | string
   status: 'not_started' | 'ongoing' | 'finished'; // kept for compatibility; UI uses ongoing only
   description: string;
-  files?: Array<{ name: string; url: string; uploadedAt: any }>;
+  files?: Array<{ name: string; description?: string; url: string; uploadedAt: any }>;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -767,13 +772,18 @@ export const addProjectUpdate = async (projectId: string, update: Omit<ProjectUp
   }
 };
 
-export const addProjectUpdateAttachment = async (projectId: string, updateId: string, file: File) => {
+export const addProjectUpdateAttachment = async (
+  projectId: string,
+  updateId: string,
+  file: File,
+  meta?: { name?: string; description?: string }
+) => {
   try {
     const url = await uploadFile(file, 'project-updates');
     const updRef = doc(db, 'projects', projectId, 'updates', updateId);
     const updSnap = await getDoc(updRef);
     const existing = updSnap.exists() ? (updSnap.data() as any).files || [] : [];
-    const next = [...existing, { name: file.name, url, uploadedAt: new Date() }];
+    const next = [...existing, { name: meta?.name || file.name, description: meta?.description || '', url, uploadedAt: new Date() }];
     await updateDoc(updRef, { files: next, updatedAt: serverTimestamp() });
     // bump project updatedAt
     await updateDoc(doc(db, 'projects', projectId), { updatedAt: serverTimestamp() });

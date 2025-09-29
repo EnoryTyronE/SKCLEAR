@@ -2655,8 +2655,8 @@ const ABYIP: React.FC = () => {
 
       {/* KK Approval Modal */}
       {showKKApprovalModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4">Katipunan ng Kabataan Approval</h3>
             <p className="text-gray-600 mb-4">
               Upload proof of KK approval for this ABYIP. This will finalize the approval process.
@@ -2686,7 +2686,7 @@ const ABYIP: React.FC = () => {
               />
               {kkProofFile && (
                 <div className="mt-2 text-sm text-green-600">
-                  ✓ File selected: {kkProofFile.name} ({(kkProofFile.size / 1024 / 1024).toFixed(2)} MB)
+                  ✓ File selected: <span className="break-all">{kkProofFile.name}</span> ({(kkProofFile.size / 1024 / 1024).toFixed(2)} MB)
                 </div>
               )}
               {kkProofImage && (
@@ -2728,7 +2728,7 @@ const ABYIP: React.FC = () => {
               />
               {kkMinutesFile && (
                 <div className="mt-2 text-sm text-green-600">
-                  ✓ File selected: {kkMinutesFile.name} ({(kkMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
+                  ✓ File selected: <span className="break-all">{kkMinutesFile.name}</span> ({(kkMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
                 </div>
               )}
             </div>
@@ -2745,7 +2745,7 @@ const ABYIP: React.FC = () => {
               />
               {kkApprovedAbyipFile && (
                 <div className="mt-2 text-sm text-green-600">
-                  ✓ File selected: {kkApprovedAbyipFile.name} ({(kkApprovedAbyipFile.size / 1024 / 1024).toFixed(2)} MB)
+                  ✓ File selected: <span className="break-all">{kkApprovedAbyipFile.name}</span> ({(kkApprovedAbyipFile.size / 1024 / 1024).toFixed(2)} MB)
                 </div>
               )}
             </div>

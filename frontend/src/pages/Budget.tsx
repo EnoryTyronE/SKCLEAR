@@ -286,6 +286,7 @@ const Budget: React.FC = () => {
       
       if (budgetData) {
         setCurrentBudget(budgetData as SKAnnualBudget);
+        // Always allow viewing, but editing will be controlled by input disabled states
         setIsEditing(true);
         setIsCreating(false);
       } else {
@@ -1676,7 +1677,7 @@ const Budget: React.FC = () => {
                         className="btn-secondary flex items-center"
                       >
                         <Eye className="h-4 w-4 mr-2" />
-                        View/Edit
+                        {budget.status === 'approved' ? 'View' : 'View/Edit'}
                       </button>
                       <button 
                         onClick={async () => {
@@ -2060,6 +2061,7 @@ const Budget: React.FC = () => {
                 <input
                   type="text"
                   value={currentBudget?.total_budget?.toString() || ''}
+                  disabled={currentBudget?.status === 'approved'}
                   onChange={(e) => {
                     handleNumberInput(e.target.value, (value) => 
                       updateBudgetField('total_budget', parseFloat(value) || 0)
@@ -2079,6 +2081,7 @@ const Budget: React.FC = () => {
                 <input
                   type="text"
                   value={currentBudget?.sk_resolution_no || ''}
+                  disabled={currentBudget?.status === 'approved'}
                   onChange={(e) => updateBudgetField('sk_resolution_no', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., 001"
@@ -2089,6 +2092,7 @@ const Budget: React.FC = () => {
                 <input
                   type="text"
                   value={currentBudget?.sk_resolution_series || ''}
+                  disabled={currentBudget?.status === 'approved'}
                   onChange={(e) => updateBudgetField('sk_resolution_series', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., 2024"
@@ -2099,6 +2103,7 @@ const Budget: React.FC = () => {
                 <input
                   type="date"
                   value={currentBudget?.sk_resolution_date ? new Date(currentBudget.sk_resolution_date).toISOString().split('T')[0] : ''}
+                  disabled={currentBudget?.status === 'approved'}
                   onChange={(e) => updateBudgetField('sk_resolution_date', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -2108,6 +2113,7 @@ const Budget: React.FC = () => {
                 <input
                   type="text"
                   value={currentBudget?.barangay_appropriation_ordinance_no || ''}
+                  disabled={currentBudget?.status === 'approved'}
                   onChange={(e) => updateBudgetField('barangay_appropriation_ordinance_no', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., 2024-001"
@@ -2118,6 +2124,7 @@ const Budget: React.FC = () => {
                 <input
                   type="text"
                   value={currentBudget?.ordinance_series || ''}
+                  disabled={currentBudget?.status === 'approved'}
                   onChange={(e) => updateBudgetField('ordinance_series', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., 2024"
@@ -2140,8 +2147,8 @@ const Budget: React.FC = () => {
                       <input
                         type="text"
                         value={receipt.source_description}
+                        disabled={currentBudget?.status === 'approved'}
                         onChange={(e) => updateReceipt(index, 'source_description', e.target.value)}
-                        disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -2150,8 +2157,8 @@ const Budget: React.FC = () => {
                       <input
                         type="text"
                         value={receipt.duration}
+                        disabled={currentBudget?.status === 'approved'}
                         onChange={(e) => updateReceipt(index, 'duration', e.target.value)}
-                        disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -2160,6 +2167,7 @@ const Budget: React.FC = () => {
                       <input
                         type="text"
                         value={receipt.mooe_amount.toString()}
+                        disabled={currentBudget?.status === 'approved'}
                         onChange={(e) => {
                           handleNumberInput(e.target.value, (value) => 
                             updateReceipt(index, 'mooe_amount', parseFloat(value) || 0)
@@ -2170,7 +2178,6 @@ const Budget: React.FC = () => {
                           const formatted = handleNumberDisplay(e.target.value);
                           updateReceipt(index, 'mooe_amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                         }}
-                        disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0.00"
                       />
@@ -2180,6 +2187,7 @@ const Budget: React.FC = () => {
                       <input
                         type="text"
                         value={receipt.co_amount.toString()}
+                        disabled={currentBudget?.status === 'approved'}
                         onChange={(e) => {
                           handleNumberInput(e.target.value, (value) => 
                             updateReceipt(index, 'co_amount', parseFloat(value) || 0)
@@ -2190,7 +2198,6 @@ const Budget: React.FC = () => {
                           const formatted = handleNumberDisplay(e.target.value);
                           updateReceipt(index, 'co_amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                         }}
-                        disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0.00"
                       />
@@ -2200,6 +2207,7 @@ const Budget: React.FC = () => {
                       <input
                         type="text"
                         value={(receipt as any).ps_amount?.toString?.() || '0'}
+                        disabled={currentBudget?.status === 'approved'}
                         onChange={(e) => {
                           handleNumberInput(e.target.value, (value) => 
                             updateReceipt(index, 'ps_amount', parseFloat(value) || 0)
@@ -2209,7 +2217,6 @@ const Budget: React.FC = () => {
                           const formatted = handleNumberDisplay(e.target.value);
                           updateReceipt(index, 'ps_amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                         }}
-                        disabled={currentBudget?.status !== 'open_for_editing'}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0.00"
                       />
@@ -2264,7 +2271,7 @@ const Budget: React.FC = () => {
                                 type="text"
                                 value={center.center_name}
                                 onChange={(e) => updateYouthCenter(programIndex, centerIndex, 'center_name', e.target.value)}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
+                                disabled={currentBudget?.status === 'approved'}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="Enter center name"
                               />
@@ -2272,7 +2279,7 @@ const Budget: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => removeYouthCenter(programIndex, centerIndex)}
-                              disabled={currentBudget?.status !== 'open_for_editing' || (program.centers?.length || 0) <= 1}
+                              disabled={currentBudget?.status === 'approved' || (program.centers?.length || 0) <= 1}
                               className="text-red-600 hover:text-red-800 text-sm"
                             >
                               Remove Center
@@ -2284,7 +2291,7 @@ const Budget: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => addYouthCenterItem(programIndex, centerIndex)}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
+                                disabled={currentBudget?.status === 'approved'}
                                 className="btn-secondary text-sm"
                               >
                                 + Add Item
@@ -2300,7 +2307,7 @@ const Budget: React.FC = () => {
                                       type="text"
                                       value={item.item_name}
                                       onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'item_name', e.target.value)}
-                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      disabled={currentBudget?.status === 'approved'}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                       placeholder="Enter item name"
                                     />
@@ -2310,7 +2317,7 @@ const Budget: React.FC = () => {
                                     <select
                                       value={item.expenditure_class}
                                       onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'expenditure_class', e.target.value)}
-                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      disabled={currentBudget?.status === 'approved'}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
                                       <option value="MOOE">MOOE</option>
@@ -2323,6 +2330,7 @@ const Budget: React.FC = () => {
                                     <input
                                       type="text"
                                       value={item.amount.toString()}
+                                      disabled={currentBudget?.status === 'approved'}
                                       onChange={(e) => {
                                         handleNumberInput(e.target.value, (value) => 
                                           updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'amount', parseFloat(value) || 0)
@@ -2332,7 +2340,6 @@ const Budget: React.FC = () => {
                                         const formatted = handleNumberDisplay(e.target.value);
                                         updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                                       }}
-                                      disabled={currentBudget?.status !== 'open_for_editing'}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                       placeholder="0.00"
                                     />
@@ -2343,7 +2350,7 @@ const Budget: React.FC = () => {
                                       type="text"
                                       value={item.duration}
                                       onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'duration', e.target.value)}
-                                      disabled={currentBudget?.status !== 'open_for_editing'}
+                                      disabled={currentBudget?.status === 'approved'}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                       placeholder="e.g., January - March"
                                     />
@@ -2355,7 +2362,7 @@ const Budget: React.FC = () => {
                                     type="text"
                                     value={item.item_description}
                                     onChange={(e) => updateYouthCenterItem(programIndex, centerIndex, itemIndex, 'item_description', e.target.value)}
-                                    disabled={currentBudget?.status !== 'open_for_editing'}
+                                    disabled={currentBudget?.status === 'approved'}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="Enter item description"
                                   />
@@ -2364,7 +2371,7 @@ const Budget: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => removeYouthCenterItem(programIndex, centerIndex, itemIndex)}
-                                    disabled={currentBudget?.status !== 'open_for_editing'}
+                                    disabled={currentBudget?.status === 'approved'}
                                     className="text-red-600 hover:text-red-800 text-sm"
                                   >
                                     Remove Item
@@ -2422,7 +2429,7 @@ const Budget: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => addYouthCenter(programIndex)}
-                          disabled={currentBudget?.status !== 'open_for_editing'}
+                          disabled={currentBudget?.status === 'approved'}
                           className="btn-secondary text-sm"
                         >
                           + Add Center of Participation
@@ -2436,7 +2443,7 @@ const Budget: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => addProgramItem(programIndex)}
-                        disabled={currentBudget?.status !== 'open_for_editing'}
+                        disabled={currentBudget?.status === 'approved'}
                         className="btn-secondary text-sm"
                       >
                         + Add Item
@@ -2447,7 +2454,7 @@ const Budget: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => openImportFromABYIP(programIndex)}
-                          disabled={currentBudget?.status !== 'open_for_editing'}
+                          disabled={currentBudget?.status === 'approved'}
                           className="btn-secondary text-sm"
                         >
                           Import from ABYIP
@@ -2463,7 +2470,7 @@ const Budget: React.FC = () => {
                               type="text"
                               value={item.item_name}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'item_name', e.target.value)}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
+                              disabled={currentBudget?.status === 'approved'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
@@ -2472,7 +2479,7 @@ const Budget: React.FC = () => {
                             <select
                               value={item.expenditure_class}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'expenditure_class', e.target.value)}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
+                              disabled={currentBudget?.status === 'approved'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                               <option value="MOOE">MOOE</option>
@@ -2485,6 +2492,7 @@ const Budget: React.FC = () => {
                             <input
                               type="text"
                               value={item.amount.toString()}
+                              disabled={currentBudget?.status === 'approved'}
                               onChange={(e) => {
                                 handleNumberInput(e.target.value, (value) => 
                                   updateProgramItem(programIndex, itemIndex, 'amount', parseFloat(value) || 0)
@@ -2494,7 +2502,6 @@ const Budget: React.FC = () => {
                                 const formatted = handleNumberDisplay(e.target.value);
                                 updateProgramItem(programIndex, itemIndex, 'amount', parseFloat(formatted.replace(/,/g, '')) || 0);
                               }}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="0.00"
                             />
@@ -2505,7 +2512,7 @@ const Budget: React.FC = () => {
                               type="text"
                               value={item.duration}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'duration', e.target.value)}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
+                              disabled={currentBudget?.status === 'approved'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
@@ -2517,7 +2524,7 @@ const Budget: React.FC = () => {
                               type="text"
                               value={item.item_description}
                               onChange={(e) => updateProgramItem(programIndex, itemIndex, 'item_description', e.target.value)}
-                                disabled={currentBudget?.status !== 'open_for_editing'}
+                              disabled={currentBudget?.status === 'approved'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
@@ -2526,7 +2533,7 @@ const Budget: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => removeProgramItem(programIndex, itemIndex)}
-                            disabled={currentBudget?.status !== 'open_for_editing'}
+                            disabled={currentBudget?.status === 'approved'}
                             className="text-red-600 hover:text-red-800 text-sm"
                           >
                             Remove Item
@@ -2633,8 +2640,8 @@ const Budget: React.FC = () => {
 
       {/* Council Approval Modal */}
       {showCouncilApprovalModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCouncilApprovalModal(false)}>
-          <div className="bg-white rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowCouncilApprovalModal(false)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-4">Approve with Council</h3>
             <p className="text-gray-600 mb-4">
               Upload supporting documents for council approval of this budget. This will finalize the approval process.
@@ -2674,7 +2681,7 @@ const Budget: React.FC = () => {
                 />
                 {councilMinutesFile && (
                   <div className="mt-2 text-sm text-green-600">
-                    ✓ File selected: {councilMinutesFile.name} ({(councilMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
+                    ✓ File selected: <span className="break-all">{councilMinutesFile.name}</span> ({(councilMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
                   </div>
                 )}
               </div>
@@ -2688,7 +2695,7 @@ const Budget: React.FC = () => {
                 />
                 {councilBudgetPdf && (
                   <div className="mt-2 text-sm text-green-600">
-                    ✓ File selected: {councilBudgetPdf.name} ({(councilBudgetPdf.size / 1024 / 1024).toFixed(2)} MB)
+                    ✓ File selected: <span className="break-all">{councilBudgetPdf.name}</span> ({(councilBudgetPdf.size / 1024 / 1024).toFixed(2)} MB)
                   </div>
                 )}
               </div>
@@ -2735,7 +2742,7 @@ const Budget: React.FC = () => {
               >
                 Cancel
               </button>
-            </div>
+        </div>
       </div>
         </div>
       )}

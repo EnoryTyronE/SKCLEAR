@@ -4,6 +4,8 @@ import { getAllABYIPs, getAllSKAnnualBudgets, getProjectsByYear, upsertProject, 
 import { useAuth } from '../contexts/AuthContext';
 import { logProjectActivity } from '../services/activityService';
 import { formatTimeAgo, convertToDate } from '../services/activityService';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 type AbyipDoc = any;
 type BudgetDoc = any;
@@ -26,10 +28,150 @@ const Projects: React.FC = () => {
   const [notice, setNotice] = useState<string>('');
   const [showStartForm, setShowStartForm] = useState<boolean>(false);
   const [startDraft, setStartDraft] = useState<string>('');
+  const [startingProject, setStartingProject] = useState<boolean>(false);
+  const [showFileUploadModal, setShowFileUploadModal] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState<File | null>(null);
+  const [fileUploadName, setFileUploadName] = useState('');
+  const [fileUploadDescription, setFileUploadDescription] = useState('');
+  const [uploadingToUpdate, setUploadingToUpdate] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const showNotice = (msg: string) => {
     setNotice(msg);
     setTimeout(() => setNotice(''), 2500);
+  };
+
+  const handleFileSelect = (file: File, updateId?: string) => {
+    setUploadingFile(file);
+    setFileUploadName(file.name);
+    setFileUploadDescription('');
+    setUploadingToUpdate(updateId || null);
+    setShowFileUploadModal(true);
+  };
+
+  const handleFileUpload = async () => {
+    if (!uploadingFile || !fileUploadName.trim() || !activeProject || uploading) return;
+
+    setUploading(true);
+    try {
+      if (uploadingToUpdate) {
+        // Upload to specific update
+        await addProjectUpdateAttachment(activeProject.id!, uploadingToUpdate, uploadingFile, {
+          name: fileUploadName.trim(),
+          description: fileUploadDescription.trim()
+        });
+        const list = await getProjectUpdates(activeProject.id!);
+        setUpdates(list);
+        
+        // Log activity
+        try {
+          await logProjectActivity(
+            'File Added',
+            `Added file "${fileUploadName.trim()}" to project update`,
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+        } catch (activityError) {
+          console.error('Error logging file upload activity:', activityError);
+        }
+      } else {
+        // Upload to project files
+        await addProjectAttachment(activeProject.id!, uploadingFile, {
+          name: fileUploadName.trim(),
+          description: fileUploadDescription.trim()
+        });
+        // Refresh project data
+        const updatedProject = await getProjectsByYear(activeProject.year);
+        const currentProject = updatedProject.find(p => p.id === activeProject.id);
+        if (currentProject) {
+          setActiveProject(currentProject);
+        }
+        
+        // Log activity
+        try {
+          await logProjectActivity(
+            'File Added',
+            `Added file "${fileUploadName.trim()}" to project files`,
+            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+            'completed'
+          );
+        } catch (activityError) {
+          console.error('Error logging file upload activity:', activityError);
+        }
+        
+        showNotice('Project file uploaded');
+      }
+      
+      setShowFileUploadModal(false);
+      setUploadingFile(null);
+      setFileUploadName('');
+      setFileUploadDescription('');
+      setUploadingToUpdate(null);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      setError('Failed to upload file. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteProjectFile = async (fileIndex: number) => {
+    if (!activeProject || !window.confirm('Are you sure you want to delete this file?')) return;
+
+    try {
+      const updatedAttachments = (activeProject.attachments || []).filter((_, index) => index !== fileIndex);
+      await updateDoc(doc(db, 'projects', activeProject.id!), {
+        attachments: updatedAttachments,
+        updatedAt: serverTimestamp()
+      });
+      
+      // Update local state
+      setActiveProject(prev => prev ? { ...prev, attachments: updatedAttachments } : prev);
+      
+      // Log activity
+      try {
+        await logProjectActivity(
+          'File Deleted',
+          `Deleted file from project files`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
+      } catch (activityError) {
+        console.error('Error logging file delete activity:', activityError);
+      }
+      
+      showNotice('File deleted');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      setError('Failed to delete file. Please try again.');
+    }
+  };
+
+  const handleDeleteUpdateFile = async (updateId: string, fileIndex: number) => {
+    if (!activeProject || !window.confirm('Are you sure you want to delete this file?')) return;
+
+    try {
+      await removeProjectUpdateAttachment(activeProject.id!, updateId, fileIndex);
+      const list = await getProjectUpdates(activeProject.id!);
+      setUpdates(list);
+      
+      // Log activity
+      try {
+        await logProjectActivity(
+          'File Deleted',
+          `Deleted file from project update`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
+      } catch (activityError) {
+        console.error('Error logging file delete activity:', activityError);
+      }
+      
+      showNotice('File deleted');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      setError('Failed to delete file. Please try again.');
+    }
   };
 
   // Load all approved sources
@@ -199,12 +341,17 @@ const Projects: React.FC = () => {
 
       {/* Year Selector */}
       <div className="card p-6">
-        <div className="flex items-center gap-3">
-          <Calendar className="h-5 w-5 text-blue-600" />
-          <div>
-            <div className="text-sm text-gray-600">Select Year</div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            <div>
+              <div className="text-sm font-medium text-gray-900">Select Year</div>
+              <div className="text-xs text-gray-500">Choose the year to view projects</div>
+            </div>
+          </div>
+          <div className="min-w-0 relative">
             <select
-              className="mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 pr-8 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-medium appearance-none"
               value={year}
               onChange={(e) => setYear(e.target.value)}
             >
@@ -213,6 +360,11 @@ const Projects: React.FC = () => {
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
@@ -552,22 +704,19 @@ const Projects: React.FC = () => {
                       {(u.files || []).length > 0 && (
                         <div className="mt-2 space-y-1">
                           {(u.files || []).map((f, idx) => (
-                            <div key={idx} className="flex items-center justify-between gap-3">
-                              <a href={f.url} target="_blank" rel="noreferrer" className="flex-1 text-sm text-blue-600 hover:underline truncate">{f.name}</a>
+                            <div key={idx} className="flex items-start gap-3 p-2 border border-gray-200 rounded">
+                              <span className="text-sm text-gray-500 flex-shrink-0">File {idx + 1}.</span>
+                              <div className="flex-1 min-w-0">
+                                <a href={f.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline block truncate">{f.name}</a>
+                                {f.description && (
+                                  <div className="text-xs text-gray-500 mt-1">{f.description}</div>
+                                )}
+                              </div>
                               <button
-                                className="text-xs text-red-600 hover:underline"
-                                onClick={async () => {
-                                  try {
-                                    await removeProjectUpdateAttachment(activeProject.id!, u.id!, idx);
-                                    const list = await getProjectUpdates(activeProject.id!);
-                                    setUpdates(list);
-                                  } catch (err) {
-                                    console.error('Remove file failed:', err);
-                                    setError('Failed to remove file.');
-                                  }
-                                }}
+                                className="text-xs text-red-600 hover:underline flex-shrink-0 px-2 py-1 border border-red-300 rounded hover:bg-red-50"
+                                onClick={() => handleDeleteUpdateFile(u.id!, idx)}
                               >
-                                Remove
+                                Delete
                               </button>
                             </div>
                           ))}
@@ -595,26 +744,16 @@ const Projects: React.FC = () => {
                           <input
                             type="file"
                             className="hidden"
-                            multiple
                             accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                            onChange={async (e) => {
-                              try {
-                                const files = e.target.files ? Array.from(e.target.files) : [];
-                                if (files.length === 0) return;
-                                for (const file of files) {
-                                  await addProjectUpdateAttachment(activeProject.id!, u.id!, file);
-                                }
-                                const list = await getProjectUpdates(activeProject.id!);
-                                setUpdates(list);
-                              } catch (err) {
-                                console.error('Upload failed:', err);
-                                setError('Failed to upload one or more files. Please try again.');
-                              } finally {
-                                e.currentTarget.value = '';
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleFileSelect(file, u.id!);
                               }
+                              e.currentTarget.value = '';
                             }}
                           />
-                          Add Files
+                          Add File
                         </label>
                       </div>
                     </div>
@@ -652,9 +791,11 @@ const Projects: React.FC = () => {
                             <div className="flex gap-2">
                               <button
                                 className="btn-primary flex-1"
-                                disabled={!startDraft}
+                                disabled={!startDraft || startingProject}
                                 onClick={async () => {
+                                  if (startingProject) return; // Prevent double-clicks
                                   try {
+                                    setStartingProject(true);
                                     const d = new Date(startDraft);
                                     await updateProjectFields(activeProject.id!, { startDate: d });
                                     // initial timeline entry
@@ -674,12 +815,14 @@ const Projects: React.FC = () => {
                                     showNotice('Project started');
                                   } catch (err) {
                                     console.error(err);
+                                  } finally {
+                                    setStartingProject(false);
                                   }
                                 }}
                               >
-                                Confirm Start
+                                {startingProject ? 'Starting...' : 'Confirm Start'}
                               </button>
-                              <button className="btn-secondary flex-1" onClick={() => { setShowStartForm(false); setStartDraft(''); }}>Cancel</button>
+                              <button className="btn-secondary flex-1" onClick={() => { setShowStartForm(false); setStartDraft(''); setStartingProject(false); }}>Cancel</button>
                             </div>
                           </div>
                         )}
@@ -718,17 +861,38 @@ const Projects: React.FC = () => {
                     <div className="mt-2">
                       <div className="text-sm font-medium text-gray-900 mb-1">Project Files</div>
                       <label className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm cursor-pointer hover:bg-gray-50">
-                        <input type="file" className="hidden" multiple accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          onChange={async (e) => {
-                            try {
-                              const files = e.target.files ? Array.from(e.target.files) : [];
-                              for (const f of files) { await addProjectAttachment(activeProject.id!, f); }
-                              showNotice('Project file(s) uploaded');
-                            } finally { if (e.currentTarget) e.currentTarget.value = ''; }
+                        <input type="file" className="hidden" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleFileSelect(file);
+                            }
+                            e.currentTarget.value = '';
                           }}
                         />
-                        Upload Files
+                        Add File
                       </label>
+                      {(activeProject.attachments || []).length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {(activeProject.attachments || []).map((f, idx) => (
+                            <div key={idx} className="text-sm text-gray-700 flex items-start gap-3 p-2 border border-gray-200 rounded">
+                              <span className="text-gray-500 flex-shrink-0">File {idx + 1}.</span>
+                              <div className="flex-1 min-w-0">
+                                <a href={f.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline block truncate">{f.name}</a>
+                                {f.description ? (
+                                  <div className="text-xs text-gray-500 mt-1">{f.description}</div>
+                                ) : null}
+                              </div>
+                              <button
+                                className="text-xs text-red-600 hover:underline flex-shrink-0 px-2 py-1 border border-red-300 rounded hover:bg-red-50"
+                                onClick={() => handleDeleteProjectFile(idx)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -772,6 +936,64 @@ const Projects: React.FC = () => {
                   </button>
                 </div>
               </div>
+        </div>
+      </div>
+        </div>
+      )}
+
+      {/* File Upload Modal */}
+      {showFileUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowFileUploadModal(false)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-4">Upload File</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">File Name</label>
+                <input
+                  type="text"
+                  value={fileUploadName}
+                  onChange={(e) => setFileUploadName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter file name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+                <textarea
+                  value={fileUploadDescription}
+                  onChange={(e) => setFileUploadDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                  placeholder="Enter file description"
+                />
+              </div>
+              {uploadingFile && (
+                <div className="text-sm text-gray-600">
+                  Selected file: <span className="font-medium">{uploadingFile.name}</span> ({(uploadingFile.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+              )}
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleFileUpload}
+                disabled={!fileUploadName.trim() || uploading}
+                className="btn-primary flex-1"
+              >
+                {uploading ? 'Uploading...' : 'Upload File'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowFileUploadModal(false);
+                  setUploadingFile(null);
+                  setFileUploadName('');
+                  setFileUploadDescription('');
+                  setUploadingToUpdate(null);
+                }}
+                disabled={uploading}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
         </div>
       </div>
         </div>

@@ -159,6 +159,168 @@ const CBYDP: React.FC = () => {
     return formatNumber(value);
   };
 
+  // Helper function to convert ABYIP project to CBYDP format
+  const convertABYIPProjectToCBYDP = (abyipProject: any): CBYDPRow => ({
+    concern: abyipProject.description || 'Administrative and governance concern',
+    objective: abyipProject.expectedResult || 'Improve administrative efficiency',
+    indicator: abyipProject.performanceIndicator || 'Number of processes improved',
+    target1: 'Q1',
+    target2: 'Q2',
+    target3: 'Q3',
+    ppas: abyipProject.ppas || abyipProject.description || '',
+    programs: [abyipProject.ppas || 'Administrative Program'],
+    projects: [abyipProject.description || 'Administrative Project'],
+    actions: ['Planning', 'Implementation', 'Monitoring', 'Evaluation'],
+    expenses: [
+      { description: abyipProject.description || 'Administrative expense', cost: '0' }
+    ],
+    responsible: abyipProject.personResponsible || 'SK Chairperson'
+  });
+
+  // Create mandatory centers using exact ABYIP mandatory items
+  const createAdministrativeServiceCenter = (): CBYDCenter => ({
+    name: 'Administrative Service',
+    agenda: 'Administrative and operational expenses for SK operations',
+    projects: [
+      convertABYIPProjectToCBYDP({
+        referenceCode: 'ADM001',
+        ppas: 'Honoraria',
+        description: 'Monthly honoraria for SK officials',
+        expectedResult: 'Proper compensation for SK officials',
+        performanceIndicator: 'Number of officials receiving honoraria',
+        periodOfImplementation: 'January - December',
+        personResponsible: 'SK Treasurer',
+      }),
+      convertABYIPProjectToCBYDP({
+        referenceCode: 'ADM002',
+        ppas: 'Membership Dues and Contribution',
+        description: 'Annual membership dues and contributions to SK Federation',
+        expectedResult: 'Active membership in SK Federation',
+        performanceIndicator: 'Payment of membership dues',
+        periodOfImplementation: 'January - December',
+        personResponsible: 'SK Treasurer',
+      }),
+      convertABYIPProjectToCBYDP({
+        referenceCode: 'ADM003',
+        ppas: 'Fidelity Bond Premiums',
+        description: 'Annual fidelity bond premiums for SK officials',
+        expectedResult: 'Protected SK funds and assets',
+        performanceIndicator: 'Valid fidelity bond coverage',
+        periodOfImplementation: 'January - December',
+        personResponsible: 'SK Treasurer',
+      }),
+    ]
+  });
+
+  const createGovernanceCenter = (): CBYDCenter => ({
+    name: 'Governance / Active Citizenship',
+    agenda: 'Youth governance and active citizenship programs',
+    projects: [
+      convertABYIPProjectToCBYDP({
+        referenceCode: 'GOV001',
+        ppas: 'Linggo ng Kabataan',
+        description: 'Annual celebration of Linggo ng Kabataan',
+        expectedResult: 'Successful celebration of youth week',
+        performanceIndicator: 'Number of participants and activities',
+        periodOfImplementation: 'March - April',
+        personResponsible: 'SK Chairperson',
+      }),
+      convertABYIPProjectToCBYDP({
+        referenceCode: 'GOV002',
+        ppas: 'PYO COA Training',
+        description: 'Training on Commission on Audit requirements for PYO',
+        expectedResult: 'Compliant financial management',
+        performanceIndicator: 'Number of officials trained',
+        periodOfImplementation: 'January - December',
+        personResponsible: 'SK Treasurer',
+      }),
+      convertABYIPProjectToCBYDP({
+        referenceCode: 'GOV003',
+        ppas: 'Leadership Development Workshops',
+        description: 'Capacity building workshops for SK officials and youth leaders',
+        expectedResult: 'Enhanced leadership skills of youth',
+        performanceIndicator: 'Number of participants trained',
+        periodOfImplementation: 'January - December',
+        personResponsible: 'SK Chairperson',
+      }),
+    ]
+  });
+
+  // Manual creation of mandatory centers from ABYIP
+  const handleCreateMandatoryCenters = async () => {
+    if (!existingCBYDPId) {
+      setError('No CBYDP to add mandatory centers to. Please initiate CBYDP first.');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      // Check if mandatory centers already exist
+      const existingAdministrativeCenter = form.centers.find(
+        center => center.name === 'Administrative Service'
+      );
+      const existingGovernanceCenter = form.centers.find(
+        center => center.name === 'Governance / Active Citizenship'
+      );
+
+      if (existingAdministrativeCenter && existingGovernanceCenter) {
+        setError('Mandatory centers (Administrative Service and Governance / Active Citizenship) already exist.');
+        setSaving(false);
+        return;
+      }
+
+      const updatedCenters = [...form.centers];
+      let addedCenters = 0;
+
+      // Add Administrative Service center if it doesn't exist
+      if (!existingAdministrativeCenter) {
+        const administrativeCenter = createAdministrativeServiceCenter();
+        updatedCenters.unshift(administrativeCenter);
+        addedCenters++;
+      }
+
+      // Add Governance / Active Citizenship center if it doesn't exist
+      if (!existingGovernanceCenter) {
+        const governanceCenter = createGovernanceCenter();
+        updatedCenters.unshift(governanceCenter);
+        addedCenters++;
+      }
+
+      const updatedForm = {
+        ...form,
+        centers: updatedCenters,
+        lastEditedBy: user?.name,
+        lastEditedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      await updateCBYDP(existingCBYDPId, updatedForm);
+      setForm(updatedForm);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+
+      // Log activity
+      try {
+        await logCBYDPActivity(
+          'Updated',
+          `Added ${addedCenters} mandatory center(s) from ABYIP (Administrative Service and Governance / Active Citizenship)`,
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
+      } catch (activityError) {
+        console.error('Error logging mandatory centers creation activity:', activityError);
+      }
+
+    } catch (error) {
+      console.error('Error creating mandatory centers:', error);
+      setError('Failed to create mandatory centers. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const loadExistingCBYDP = useCallback(async () => {
     try {
       console.log('Loading existing CBYDP for user:', user?.name, user?.role);
@@ -1114,9 +1276,17 @@ const CBYDP: React.FC = () => {
         setExistingCBYDPId(null);
       }
 
-      // Create fresh CBYDP data
+      // Create mandatory centers from ABYIP
+      const administrativeCenter = createAdministrativeServiceCenter();
+      const governanceCenter = createGovernanceCenter();
+      
+      // Create fresh CBYDP data with mandatory centers
       const cbydpData = {
-        centers: [{ ...defaultCenter }], // Start with fresh default center
+        centers: [
+          administrativeCenter, // Administrative Service center
+          governanceCenter, // Governance / Active Citizenship center
+          { ...defaultCenter } // Keep the default center as well
+        ],
         skMembers: form.skMembers, // Keep SK members
         showLogoInPrint: true,
         status: 'open_for_editing',
@@ -1221,18 +1391,18 @@ const CBYDP: React.FC = () => {
       // Delete the old pending CBYDP
       if (existingCBYDPId) {
         await deleteCBYDP(existingCBYDPId);
-        
-        // Log activity
-        try {
-          await logCBYDPActivity(
-            'Deleted',
-            'Pending CBYDP has been deleted after approval',
-            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
-            'completed'
-          );
-        } catch (activityError) {
-          console.error('Error logging CBYDP delete activity:', activityError);
-        }
+      }
+
+      // Log approval activity (not deletion)
+      try {
+        await logCBYDPActivity(
+          'Approved',
+          'CBYDP has been approved with KK proof and supporting documents',
+          { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+          'completed'
+        );
+      } catch (activityError) {
+        console.error('Error logging CBYDP approval activity:', activityError);
       }
 
       // Update the form state with the new approved CBYDP
@@ -1494,6 +1664,28 @@ const CBYDP: React.FC = () => {
                </>
              )}
            </button>
+            )}
+
+            {/* Add Mandatory Centers - Available when editing is open */}
+            {form.isEditingOpen && (
+              <button
+                onClick={handleCreateMandatoryCenters}
+                disabled={saving || form.status === 'approved'}
+                className="btn-secondary flex items-center bg-blue-600 hover:bg-blue-700 text-white"
+                title="Add mandatory centers from ABYIP (Administrative Service and Governance / Active Citizenship)"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Mandatory Centers
+                  </>
+                )}
+              </button>
             )}
 
             {/* Close Editing Period - Only for Chairperson when open for editing */}
@@ -2415,8 +2607,8 @@ const CBYDP: React.FC = () => {
 
        {/* KK Approval Modal */}
        {showKKApprovalModal && (
-         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-           <div className="bg-white rounded-lg p-6 w-full max-w-md">
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
              <h3 className="text-lg font-semibold mb-4">Katipunan ng Kabataan Approval</h3>
              <p className="text-gray-600 mb-4">
                Please upload proof of Katipunan ng Kabataan approval for this CBYDP and attach the minutes and scanned approved plan.
@@ -2489,6 +2681,11 @@ const CBYDP: React.FC = () => {
                   onChange={(e) => setKkMinutesFile(e.target.files ? e.target.files[0] : null)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 />
+                {kkMinutesFile && (
+                  <div className="mt-2 text-sm text-green-600">
+                    ✓ File selected: <span className="break-all">{kkMinutesFile.name}</span> ({(kkMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </div>
+                )}
               </div>
 
               <div className="mb-4">
@@ -2501,6 +2698,11 @@ const CBYDP: React.FC = () => {
                   onChange={(e) => setKkApprovedPlanFile(e.target.files ? e.target.files[0] : null)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 />
+                {kkApprovedPlanFile && (
+                  <div className="mt-2 text-sm text-green-600">
+                    ✓ File selected: <span className="break-all">{kkApprovedPlanFile.name}</span> ({(kkApprovedPlanFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </div>
+                )}
               </div>
 
              {kkProofImage && (
