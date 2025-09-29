@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   createSKAnnualBudget, 
@@ -6,7 +6,8 @@ import {
   getAllSKAnnualBudgets, 
   updateSKAnnualBudget, 
   deleteSKAnnualBudget,
-  getABYIP
+  getABYIP,
+  uploadFile
 } from '../services/firebaseService';
 import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -86,6 +87,11 @@ interface SKAnnualBudget {
   lastEditedBy?: string;
   lastEditedAt?: Date;
   rejectionReason?: string;
+  approvalEvidence?: {
+    meetingPhotos?: string[];
+    minutesUrl?: string;
+    budgetPdfUrl?: string;
+  };
 }
 
 const Budget: React.FC = () => {
@@ -110,6 +116,13 @@ const Budget: React.FC = () => {
     generalAdministration: true,
     youthDevelopment: true
   });
+  const approvalEvidenceRef = useRef<{ meetingPhotos?: string[]; minutesUrl?: string; budgetPdfUrl?: string } | null>(null);
+  const [showCouncilApprovalModal, setShowCouncilApprovalModal] = useState(false);
+  const [councilMeetingPhotos, setCouncilMeetingPhotos] = useState<File[]>([]);
+  const [councilMinutesFile, setCouncilMinutesFile] = useState<File | null>(null);
+  const [councilBudgetPdf, setCouncilBudgetPdf] = useState<File | null>(null);
+  const [uploadingApproval, setUploadingApproval] = useState(false);
+  const [councilApprovalDate, setCouncilApprovalDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   // Toggle section expansion
   const toggleSection = (sectionKey: string) => {
@@ -500,7 +513,12 @@ const Budget: React.FC = () => {
   };
 
   // Approve budget
-  const approveBudget = async () => {
+  const approveBudget = async (evidence?: {
+    meetingPhotos?: string[];
+    minutesUrl?: string;
+    budgetPdfUrl?: string;
+    approvedAtOverride?: Date;
+  }) => {
     if (!currentBudget) return;
 
     setSaving(true);
@@ -509,7 +527,8 @@ const Budget: React.FC = () => {
         ...currentBudget,
         status: 'approved' as const,
         approvedBy: user?.name || '',
-        approvedAt: new Date()
+        approvedAt: evidence?.approvedAtOverride || new Date(),
+        approvalEvidence: evidence || currentBudget.approvalEvidence
       };
 
       await updateSKAnnualBudget(currentBudget.id!, budgetData);
@@ -837,21 +856,21 @@ const Budget: React.FC = () => {
                       <td className="border border-gray-800 p-2 text-center">
                         {center.items.map((item, itemIndex) => (
                           <div key={itemIndex} className="mb-1">
-                            {item.expenditure_class === 'MOOE' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                        {item.expenditure_class === 'MOOE' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
                           </div>
                         ))}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
                         {center.items.map((item, itemIndex) => (
                           <div key={itemIndex} className="mb-1">
-                            {item.expenditure_class === 'CO' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                        {item.expenditure_class === 'CO' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
                           </div>
                         ))}
                       </td>
                       <td className="border border-gray-800 p-2 text-center">
                         {center.items.map((item, itemIndex) => (
                           <div key={itemIndex} className="mb-1">
-                            {item.expenditure_class === 'PS' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
+                        {item.expenditure_class === 'PS' ? (<span className="whitespace-nowrap text-[12px]">P {formatNumber(item.amount)}</span>) : ''}
                           </div>
                         ))}
                       </td>
@@ -1462,9 +1481,19 @@ const Budget: React.FC = () => {
                       city_municipality: skProfile?.city || '',
                       province: skProfile?.province || ''
                     };
+                    // Immediately persist and open editing
+                    try {
+                      const newId = await createSKAnnualBudget(updatedBudget);
+                      setBudgets(prev => [{ ...updatedBudget, id: newId }, ...prev]);
+                      setCurrentBudget({ ...updatedBudget, id: newId });
+                      setIsEditing(true);
+                      setIsCreating(false);
+                    } catch (e) {
+                      console.error('Failed to create budget:', e);
                     setCurrentBudget(updatedBudget);
                     setIsEditing(true);
                     setIsCreating(true);
+                    }
                   }}
                   className="btn-primary"
                 >
@@ -1764,6 +1793,107 @@ const Budget: React.FC = () => {
               >
                 Initiate Budget
               </button>
+            ) : currentBudget?.status === 'pending_approval' ? (
+              <>
+                <button 
+                  onClick={previewBudget}
+                  className="btn-secondary flex items-center"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  {preview ? 'Edit Mode' : 'Preview'}
+                </button>
+                <button 
+                  onClick={loadBudgets}
+                  className="btn-secondary flex items-center"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </button>
+                {user?.role === 'chairperson' && (
+                  <>
+                    <button
+                      onClick={() => setShowCouncilApprovalModal(true)}
+                      className="btn-primary flex items-center bg-green-600 hover:bg-green-700"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Approve with Council
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm('Reject this budget and return to editing?')) return;
+                        setSaving(true);
+                        try {
+                          const budgetData = { ...currentBudget, status: 'open_for_editing' as const, rejectedBy: user?.name || '', rejectedAt: new Date() };
+                          await updateSKAnnualBudget(currentBudget!.id!, budgetData);
+                          setCurrentBudget(budgetData);
+                          setBudgets(prev => prev.map(b => b.id === currentBudget!.id ? { ...b, ...budgetData } : b));
+                        } finally { setSaving(false); }
+                      }}
+                      className="btn-secondary flex items-center bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Reject
+                    </button>
+                  </>
+                )}
+                <button 
+                  onClick={async () => {
+                    if (window.confirm('Are you sure you want to reset all budgets? This action cannot be undone.')) {
+                      setSaving(true);
+                      try {
+                        // Delete all budgets
+                        for (const budget of budgets) {
+                          if (budget.id) {
+                            await deleteSKAnnualBudget(budget.id);
+                          }
+                        }
+                        
+                        // Log activity
+                        try {
+                          await logBudgetActivity(
+                            'Deleted All',
+                            `All SK Annual Budgets (${budgets.length} budgets) have been deleted`,
+                            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+                            'completed'
+                          );
+                        } catch (activityError) {
+                          console.error('Error logging Budget delete all activity:', activityError);
+                        }
+                        
+                        // Reset state
+                        setBudgets([]);
+                        setCurrentBudget(null);
+                        setIsEditing(false);
+                        setIsCreating(false);
+                        setError('');
+                        setSaved(true);
+                        setTimeout(() => setSaved(false), 3000);
+                      } catch (err) {
+                        console.error('Error resetting budgets:', err);
+                        setError('Failed to reset budgets');
+                      } finally {
+                        setSaving(false);
+                      }
+                    }
+                  }}
+                  disabled={saving}
+                  className="btn-secondary flex items-center bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Reset All Budgets
+                </button>
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setCurrentBudget(null);
+                    setPreview(false);
+                  }}
+                  className="btn-secondary flex items-center"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Back to List
+                </button>
+              </>
             ) : (
               <>
                 <button 
@@ -1783,6 +1913,9 @@ const Budget: React.FC = () => {
                 </button>
               </>
             )}
+            {/* Show these buttons only when not in pending approval status */}
+            {currentBudget?.status !== 'pending_approval' && (
+              <>
             <button 
               onClick={loadBudgets}
               className="btn-secondary flex items-center"
@@ -1811,17 +1944,17 @@ const Budget: React.FC = () => {
                         await deleteSKAnnualBudget(budget.id);
                       }
                     }
-                    
-                    // Log activity
-                    try {
-                      await logBudgetActivity(
-                        'Deleted All',
-                        `All SK Annual Budgets (${budgets.length} budgets) have been deleted`,
-                        { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
-                        'completed'
-                      );
-                    } catch (activityError) {
-                      console.error('Error logging Budget delete all activity:', activityError);
+                        
+                        // Log activity
+                        try {
+                          await logBudgetActivity(
+                            'Deleted All',
+                            `All SK Annual Budgets (${budgets.length} budgets) have been deleted`,
+                            { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' },
+                            'completed'
+                          );
+                        } catch (activityError) {
+                          console.error('Error logging Budget delete all activity:', activityError);
                     }
                     
                     // Reset state
@@ -1860,6 +1993,8 @@ const Budget: React.FC = () => {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Back to List
               </button>
+                )}
+              </>
             )}
             
             {/* Show Logo in Printout Checkbox */}
@@ -1991,73 +2126,7 @@ const Budget: React.FC = () => {
             </div>
           </div>
 
-          {/* Approval Buttons - Show when status is pending_approval */}
-          {currentBudget?.status === 'pending_approval' && (
-            <div className="card p-6">
-              <h2 className="text-xl font-semibold mb-4">Budget Approval</h2>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-600 mb-2">
-                    Budget for {currentBudget.year} is pending approval. 
-                    {currentBudget.closedBy && ` Closed by: ${currentBudget.closedBy}`}
-                    {currentBudget.closedAt && ` on ${new Date(currentBudget.closedAt).toLocaleDateString()}`}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Only SK Chairperson can approve or reject this budget.
-                  </p>
-                </div>
-                {user?.role === 'chairperson' && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={approveBudget}
-                      disabled={saving}
-                      className="btn-primary flex items-center bg-green-600 hover:bg-green-700"
-                    >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Approve Budget
-                    </button>
-                    <button 
-                      onClick={async () => {
-                        if (!currentBudget) return;
-                        
-                        if (!window.confirm('Are you sure you want to reject this budget? This will return it to open for editing status.')) {
-                          return;
-                        }
-
-                        setSaving(true);
-                        try {
-                          const budgetData = {
-                            ...currentBudget,
-                            status: 'open_for_editing' as const,
-                            rejectedBy: user?.name || '',
-                            rejectedAt: new Date()
-                          };
-
-                          await updateSKAnnualBudget(currentBudget.id!, budgetData);
-                          setCurrentBudget({ ...currentBudget, ...budgetData });
-
-                          setError('');
-                          setSaved(true);
-                          setTimeout(() => setSaved(false), 3000);
-                          loadBudgets();
-                        } catch (err) {
-                          console.error('Error rejecting budget:', err);
-                          setError('Failed to reject budget');
-                        } finally {
-                          setSaving(false);
-                        }
-                      }}
-                      disabled={saving}
-                      className="btn-secondary flex items-center bg-red-600 hover:bg-red-700 text-white"
-                    >
-                      <X className="h-4 w-4 mr-2" />
-                      Reject Budget
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Move approval actions to header action buttons (like ABYIP) */}
 
           {/* Part I: Receipts Program */}
           <div className="card p-6">
@@ -2562,6 +2631,115 @@ const Budget: React.FC = () => {
         </div>
       )}
 
+      {/* Council Approval Modal */}
+      {showCouncilApprovalModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCouncilApprovalModal(false)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-4">Approve with Council</h3>
+            <p className="text-gray-600 mb-4">
+              Upload supporting documents for council approval of this budget. This will finalize the approval process.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Approval Date</label>
+                <input
+                  type="date"
+                  value={councilApprovalDate}
+                  onChange={(e) => setCouncilApprovalDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Meeting Photos</label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(e) => setCouncilMeetingPhotos(e.target.files ? Array.from(e.target.files) : [])}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {(councilMeetingPhotos || []).length > 0 && (
+                  <div className="mt-2 text-sm text-green-600">
+                    ✓ {councilMeetingPhotos.length} file(s) selected
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Minutes of Meeting (PDF/Word)</label>
+                <input
+                  type="file"
+                  accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(e) => setCouncilMinutesFile(e.target.files ? e.target.files[0] : null)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {councilMinutesFile && (
+                  <div className="mt-2 text-sm text-green-600">
+                    ✓ File selected: {councilMinutesFile.name} ({(councilMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Scanned Approved Budget (PDF)</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setCouncilBudgetPdf(e.target.files ? e.target.files[0] : null)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {councilBudgetPdf && (
+                  <div className="mt-2 text-sm text-green-600">
+                    ✓ File selected: {councilBudgetPdf.name} ({(councilBudgetPdf.size / 1024 / 1024).toFixed(2)} MB)
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex space-x-3 mt-4">
+              <button
+                className="btn-primary flex-1"
+                disabled={uploadingApproval}
+                onClick={async () => {
+                  if (!currentBudget) return;
+                  try {
+                    setUploadingApproval(true);
+                    const photos: string[] = [];
+                    for (const f of councilMeetingPhotos) {
+                      const url = await uploadFile(f, 'budget-approval-meeting-photos');
+                      photos.push(url);
+                    }
+                    const minutesUrl = councilMinutesFile ? await uploadFile(councilMinutesFile, 'budget-approval-minutes') : undefined;
+                    const budgetPdfUrl = councilBudgetPdf ? await uploadFile(councilBudgetPdf, 'budget-approved-pdf') : undefined;
+                    const approvedAtOverride = councilApprovalDate ? new Date(councilApprovalDate) : undefined;
+                    await approveBudget({ meetingPhotos: photos, minutesUrl, budgetPdfUrl, approvedAtOverride });
+                    setShowCouncilApprovalModal(false);
+                    setCouncilMeetingPhotos([]);
+                    setCouncilMinutesFile(null);
+                    setCouncilBudgetPdf(null);
+                  } catch (err) {
+                    console.error('Council approval failed:', err);
+                    alert('Failed to approve. Please try again.');
+                  } finally {
+                    setUploadingApproval(false);
+                  }
+                }}
+              >
+                {uploadingApproval ? 'Approving...' : 'Approve with Council'}
+              </button>
+              <button
+                className="btn-secondary flex-1"
+                onClick={() => {
+                  setShowCouncilApprovalModal(false);
+                  setCouncilMeetingPhotos([]);
+                  setCouncilMinutesFile(null);
+                  setCouncilBudgetPdf(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+      </div>
+        </div>
+      )}
+
               </>
             )}
 
@@ -2596,7 +2774,7 @@ const Budget: React.FC = () => {
                     </div>
                   </div>
                   
-                  {generatePreviewContent()}
+                {generatePreviewContent()}
                 </div>
               </div>
             )}

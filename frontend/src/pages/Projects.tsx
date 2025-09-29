@@ -240,9 +240,9 @@ const Projects: React.FC = () => {
               <div className="text-gray-500">No approved ABYIP for {year || 'selected year'}.</div>
             )}
           </div>
-        </div>
+      </div>
 
-        <div className="card p-6">
+      <div className="card p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">Annual Budget (Approved)</h3>
             {approvedBudgetForYear ? (
@@ -772,8 +772,8 @@ const Projects: React.FC = () => {
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
+        </div>
+      </div>
         </div>
       )}
     </div>

@@ -128,6 +128,8 @@ const ABYIP: React.FC = () => {
   const [kkProofImage, setKkProofImage] = useState<string>('');
   const [kkApprovalDate, setKkApprovalDate] = useState<string>('');
   const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
+  const [kkMinutesFile, setKkMinutesFile] = useState<File | null>(null);
+  const [kkApprovedAbyipFile, setKkApprovedAbyipFile] = useState<File | null>(null);
   const [showManagement, setShowManagement] = useState(false);
 
   // Helper functions to create mandatory centers
@@ -526,6 +528,22 @@ const ABYIP: React.FC = () => {
       const imageUrl = await uploadFile(kkProofFile, `abyip-kk-proof/${existingABYIPId}`);
       console.log('Image uploaded successfully:', imageUrl);
 
+      // Upload additional files if provided
+      let minutesUrl = '';
+      let approvedAbyipUrl = '';
+      
+      if (kkMinutesFile) {
+        console.log('Uploading minutes file...');
+        minutesUrl = await uploadFile(kkMinutesFile, `abyip-kk-minutes/${existingABYIPId}`);
+        console.log('Minutes uploaded successfully:', minutesUrl);
+      }
+      
+      if (kkApprovedAbyipFile) {
+        console.log('Uploading approved ABYIP file...');
+        approvedAbyipUrl = await uploadFile(kkApprovedAbyipFile, `abyip-approved/${existingABYIPId}`);
+        console.log('Approved ABYIP uploaded successfully:', approvedAbyipUrl);
+      }
+
       // Update the existing ABYIP with approval data instead of creating a new one
       const approvedABYIPData = {
         ...form,
@@ -533,6 +551,8 @@ const ABYIP: React.FC = () => {
         kkApprovedBy: user?.name,
         kkApprovedAt: new Date(kkApprovalDate),
         kkProofImage: imageUrl,
+        kkMinutesUrl: minutesUrl,
+        kkApprovedAbyipUrl: approvedAbyipUrl,
         approvedBy: user?.name,
         approvedAt: new Date(),
         isEditingOpen: false,
@@ -555,6 +575,8 @@ const ABYIP: React.FC = () => {
       setKkProofFile(null);
       setKkProofImage('');
       setKkApprovalDate('');
+      setKkMinutesFile(null);
+      setKkApprovedAbyipFile(null);
       
       console.log('ABYIP approved successfully!');
     } catch (error) {
@@ -2698,6 +2720,40 @@ const ABYIP: React.FC = () => {
               />
             </div>
 
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Minutes of Meeting (PDF/Word)
+              </label>
+              <input
+                type="file"
+                accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => setKkMinutesFile(e.target.files ? e.target.files[0] : null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {kkMinutesFile && (
+                <div className="mt-2 text-sm text-green-600">
+                  ✓ File selected: {kkMinutesFile.name} ({(kkMinutesFile.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Scanned Approved ABYIP (PDF)
+              </label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setKkApprovedAbyipFile(e.target.files ? e.target.files[0] : null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {kkApprovedAbyipFile && (
+                <div className="mt-2 text-sm text-green-600">
+                  ✓ File selected: {kkApprovedAbyipFile.name} ({(kkApprovedAbyipFile.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+              )}
+            </div>
+
             <div className="flex space-x-3">
               <button
                 onClick={handleKKApproval}
@@ -2712,6 +2768,8 @@ const ABYIP: React.FC = () => {
                   setKkProofImage('');
                   setKkProofFile(null);
                   setKkApprovalDate('');
+                  setKkMinutesFile(null);
+                  setKkApprovedAbyipFile(null);
                 }}
                 className="btn-secondary flex-1"
               >
