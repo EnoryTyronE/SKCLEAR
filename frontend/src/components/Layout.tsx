@@ -246,8 +246,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {/* Content area with sidebar and main content */}
         <div className="flex">
-          {/* Desktop sidebar - now below header */}
-          <div className={`hidden lg:flex lg:flex-col transition-all duration-300 ${
+          {/* Desktop sidebar - sticky below header */}
+          <div className={`hidden lg:flex lg:flex-col transition-all duration-300 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto ${
             sidebarCollapsed ? 'lg:w-16' : 'lg:w-64'
           }`}>
             <div className="flex flex-col flex-grow bg-white border-r border-gray-200">
