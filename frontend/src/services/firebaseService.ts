@@ -617,3 +617,214 @@ export const deleteSKAnnualBudget = async (budgetId: string) => {
   }
 };
 
+// Projects (Monitoring)
+export interface ProjectDoc {
+  id?: string;
+  year: string;
+  source: 'abyip' | 'budget';
+  referenceCode?: string;
+  title: string;
+  description: string;
+  centerName?: string;
+  personResponsible?: string;
+  status: 'not_started' | 'ongoing' | 'finished';
+  startDate?: any;
+  amount?: number;
+  period?: string;
+  attachments?: Array<{
+    name: string;
+    url: string;
+    uploadedAt: any;
+  }>;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export const getProjectsByYear = async (year: string): Promise<ProjectDoc[]> => {
+  try {
+    // Avoid composite index requirement: filter by year only, sort client-side
+    const q = query(collection(db, 'projects'), where('year', '==', year));
+    const snap = await getDocs(q);
+    const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    return items.sort((a: any, b: any) => {
+      const at = a.updatedAt?.toDate?.() || a.updatedAt || 0;
+      const bt = b.updatedAt?.toDate?.() || b.updatedAt || 0;
+      return (bt instanceof Date ? bt.getTime() : bt) - (at instanceof Date ? at.getTime() : at);
+    });
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    return [];
+  }
+};
+
+export const upsertProject = async (project: ProjectDoc): Promise<string> => {
+  try {
+    if (project.id) {
+      await updateDoc(doc(db, 'projects', project.id), {
+        ...project,
+        updatedAt: serverTimestamp()
+      });
+      return project.id;
+    }
+    const ref = await addDoc(collection(db, 'projects'), {
+      ...project,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return ref.id;
+  } catch (error) {
+    console.error('Error upserting project:', error);
+    throw error;
+  }
+};
+
+export const updateProjectStatus = async (projectId: string, status: ProjectDoc['status']) => {
+  try {
+    await updateDoc(doc(db, 'projects', projectId), { status, updatedAt: serverTimestamp() });
+    return true;
+  } catch (error) {
+    console.error('Error updating project status:', error);
+    throw error;
+  }
+};
+
+export const addProjectAttachment = async (projectId: string, file: File) => {
+  try {
+    const url = await uploadFile(file, 'projects');
+    const projectRef = doc(db, 'projects', projectId);
+    const projectSnap = await getDoc(projectRef);
+    const existing = projectSnap.exists() ? (projectSnap.data() as any).attachments || [] : [];
+    const next = [
+      ...existing,
+      { name: file.name, url, uploadedAt: new Date() }
+    ];
+    await updateDoc(projectRef, { attachments: next, updatedAt: serverTimestamp() });
+    return url;
+  } catch (error) {
+    console.error('Error adding project attachment:', error);
+    throw error;
+  }
+};
+
+export const deleteProjectsByYear = async (year: string) => {
+  try {
+    const q = query(collection(db, 'projects'), where('year', '==', year));
+    const snap = await getDocs(q);
+    const deletes = snap.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletes);
+    return true;
+  } catch (error) {
+    console.error('Error deleting projects by year:', error);
+    throw error;
+  }
+};
+
+export const updateProjectFields = async (projectId: string, changes: Partial<Pick<ProjectDoc, 'title' | 'description' | 'status' | 'centerName' | 'startDate'>>) => {
+  try {
+    await updateDoc(doc(db, 'projects', projectId), { ...changes, updatedAt: serverTimestamp() });
+    return true;
+  } catch (error) {
+    console.error('Error updating project fields:', error);
+    throw error;
+  }
+};
+
+// Project Updates (timeline)
+export interface ProjectUpdateDoc {
+  id?: string;
+  date: any; // Timestamp | Date | string
+  status: 'not_started' | 'ongoing' | 'finished'; // kept for compatibility; UI uses ongoing only
+  description: string;
+  files?: Array<{ name: string; url: string; uploadedAt: any }>;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export const getProjectUpdates = async (projectId: string): Promise<ProjectUpdateDoc[]> => {
+  try {
+    const q = query(collection(db, 'projects', projectId, 'updates'), orderBy('date', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  } catch (error) {
+    console.error('Error fetching project updates:', error);
+    return [];
+  }
+};
+
+export const addProjectUpdate = async (projectId: string, update: Omit<ProjectUpdateDoc, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+  try {
+    const ref = await addDoc(collection(db, 'projects', projectId, 'updates'), {
+      ...update,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    // bump project updatedAt
+    await updateDoc(doc(db, 'projects', projectId), { updatedAt: serverTimestamp() });
+    return ref.id;
+  } catch (error) {
+    console.error('Error adding project update:', error);
+    throw error;
+  }
+};
+
+export const addProjectUpdateAttachment = async (projectId: string, updateId: string, file: File) => {
+  try {
+    const url = await uploadFile(file, 'project-updates');
+    const updRef = doc(db, 'projects', projectId, 'updates', updateId);
+    const updSnap = await getDoc(updRef);
+    const existing = updSnap.exists() ? (updSnap.data() as any).files || [] : [];
+    const next = [...existing, { name: file.name, url, uploadedAt: new Date() }];
+    await updateDoc(updRef, { files: next, updatedAt: serverTimestamp() });
+    // bump project updatedAt
+    await updateDoc(doc(db, 'projects', projectId), { updatedAt: serverTimestamp() });
+    return url;
+  } catch (error) {
+    console.error('Error adding project update attachment:', error);
+    throw error;
+  }
+};
+
+export const removeProjectUpdateAttachment = async (projectId: string, updateId: string, fileIndex: number) => {
+  try {
+    const updRef = doc(db, 'projects', projectId, 'updates', updateId);
+    const updSnap = await getDoc(updRef);
+    const existing = updSnap.exists() ? (updSnap.data() as any).files || [] : [];
+    if (fileIndex < 0 || fileIndex >= existing.length) return false;
+    const next = existing.filter((_: any, idx: number) => idx !== fileIndex);
+    await updateDoc(updRef, { files: next, updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'projects', projectId), { updatedAt: serverTimestamp() });
+    return true;
+  } catch (error) {
+    console.error('Error removing project update attachment:', error);
+    throw error;
+  }
+};
+
+export const clearProjectUpdateAttachments = async (projectId: string, updateId: string) => {
+  try {
+    const updRef = doc(db, 'projects', projectId, 'updates', updateId);
+    await updateDoc(updRef, { files: [], updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'projects', projectId), { updatedAt: serverTimestamp() });
+    return true;
+  } catch (error) {
+    console.error('Error clearing project update attachments:', error);
+    throw error;
+  }
+};
+
+export const updateProjectUpdate = async (
+  projectId: string,
+  updateId: string,
+  changes: Partial<Pick<ProjectUpdateDoc, 'date' | 'status' | 'description'>>
+) => {
+  try {
+    const updRef = doc(db, 'projects', projectId, 'updates', updateId);
+    await updateDoc(updRef, { ...changes, updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'projects', projectId), { updatedAt: serverTimestamp() });
+    return true;
+  } catch (error) {
+    console.error('Error updating project update:', error);
+    throw error;
+  }
+};
+
