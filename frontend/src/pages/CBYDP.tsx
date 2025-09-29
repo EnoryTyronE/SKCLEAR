@@ -97,6 +97,8 @@ const CBYDP: React.FC = () => {
   const [kkProofFile, setKkProofFile] = useState<File | null>(null);
   const [kkProofImage, setKkProofImage] = useState<string>('');
   const [kkApprovalDate, setKkApprovalDate] = useState<string>('');
+  const [kkMinutesFile, setKkMinutesFile] = useState<File | null>(null);
+  const [kkApprovedPlanFile, setKkApprovedPlanFile] = useState<File | null>(null);
   const [showKKApprovalModal, setShowKKApprovalModal] = useState(false);
   const [expandedCenters, setExpandedCenters] = useState<{[key: number]: boolean}>({});
   const printRef = useRef<HTMLDivElement>(null);
@@ -1186,13 +1188,25 @@ const CBYDP: React.FC = () => {
       const imageUrl = await uploadFile(kkProofFile, 'CBYDP_KK_Proof');
       console.log('Image uploaded successfully:', imageUrl);
 
-      // Create a new approved CBYDP with the Google Drive image URL
+      // Upload optional minutes and approved plan files
+      let minutesUrl = '';
+      let approvedPlanUrl = '';
+      if (kkMinutesFile) {
+        minutesUrl = await uploadFile(kkMinutesFile, 'CBYDP_KK_Minutes');
+      }
+      if (kkApprovedPlanFile) {
+        approvedPlanUrl = await uploadFile(kkApprovedPlanFile, 'CBYDP_Approved_PDF');
+      }
+
+      // Create a new approved CBYDP with uploaded URLs
       const approvedCBYDPData = {
         ...form,
         status: 'approved',
         kkApprovedBy: user?.name,
         kkApprovedAt: new Date(kkApprovalDate), // Use the selected approval date
         kkProofImage: imageUrl, // Store the Google Drive URL
+        kkMinutesUrl: minutesUrl,
+        kkApprovedPdfUrl: approvedPlanUrl,
         approvedBy: user?.name,
         approvedAt: new Date(),
         isEditingOpen: false, // Close editing for approved CBYDP
@@ -2405,7 +2419,7 @@ const CBYDP: React.FC = () => {
            <div className="bg-white rounded-lg p-6 w-full max-w-md">
              <h3 className="text-lg font-semibold mb-4">Katipunan ng Kabataan Approval</h3>
              <p className="text-gray-600 mb-4">
-               Please upload proof of Katipunan ng Kabataan approval for this CBYDP.
+               Please upload proof of Katipunan ng Kabataan approval for this CBYDP and attach the minutes and scanned approved plan.
              </p>
              
                            <div className="mb-4">
@@ -2463,6 +2477,30 @@ const CBYDP: React.FC = () => {
                 <p className="text-xs text-gray-500 mt-1">
                   Select the date when Katipunan ng Kabataan approved this CBYDP
                 </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Minutes of Meeting (PDF/Word)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(e) => setKkMinutesFile(e.target.files ? e.target.files[0] : null)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Scanned Approved CBYDP (PDF)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setKkApprovedPlanFile(e.target.files ? e.target.files[0] : null)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                />
               </div>
 
              {kkProofImage && (

@@ -1795,20 +1795,6 @@ const Budget: React.FC = () => {
               </button>
             ) : currentBudget?.status === 'pending_approval' ? (
               <>
-                <button 
-                  onClick={previewBudget}
-                  className="btn-secondary flex items-center"
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  {preview ? 'Edit Mode' : 'Preview'}
-                </button>
-                <button 
-                  onClick={loadBudgets}
-                  className="btn-secondary flex items-center"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </button>
                 {user?.role === 'chairperson' && (
                   <>
                     <button
@@ -1836,6 +1822,20 @@ const Budget: React.FC = () => {
                     </button>
                   </>
                 )}
+                <button 
+                  onClick={previewBudget}
+                  className="btn-secondary flex items-center"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  {preview ? 'Edit Mode' : 'Preview'}
+                </button>
+                <button 
+                  onClick={loadBudgets}
+                  className="btn-secondary flex items-center"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </button>
                 <button 
                   onClick={async () => {
                     if (window.confirm('Are you sure you want to reset all budgets? This action cannot be undone.')) {

@@ -1193,6 +1193,51 @@ const ABYIP: React.FC = () => {
             </button>
           )}
 
+          {/* KK Approval Actions - Move to the far left (before Preview) */}
+          {user?.role === 'chairperson' && form.status === 'pending_kk_approval' && (
+            <>
+              <button
+                onClick={() => setShowKKApprovalModal(true)}
+                disabled={saving}
+                className="btn-primary flex items-center bg-green-600 hover:bg-green-700"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Approving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Approve with KK
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  const reason = prompt('Please provide a reason for rejection:');
+                  if (reason) {
+                    handleRejectKK(reason);
+                  }
+                }}
+                disabled={saving}
+                className="btn-danger flex items-center"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Rejecting...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Reject
+                  </>
+                )}
+              </button>
+            </>
+          )}
+
           {/* Preview Button - Only available when ABYIP is initiated */}
           {form.status !== 'not_initiated' && (
             <button
@@ -1238,50 +1283,7 @@ const ABYIP: React.FC = () => {
             </button>
           )}
 
-          {/* KK Approval Actions - Only for Chairperson when pending KK approval */}
-          {user?.role === 'chairperson' && form.status === 'pending_kk_approval' && (
-            <>
-              <button
-                onClick={() => setShowKKApprovalModal(true)}
-                disabled={saving}
-                className="btn-primary flex items-center bg-green-600 hover:bg-green-700"
-              >
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Approving...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Approve with KK
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  const reason = prompt('Please provide a reason for rejection:');
-                  if (reason) {
-                    handleRejectKK(reason);
-                  }
-                }}
-                disabled={saving}
-                className="btn-danger flex items-center"
-              >
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Rejecting...
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    Reject
-                  </>
-                )}
-              </button>
-            </>
-          )}
+          
 
           {/* Reset ABYIP Button - Only for Chairperson when approved */}
           {user?.role === 'chairperson' && form.status === 'approved' && (
@@ -2660,16 +2662,6 @@ const ABYIP: React.FC = () => {
               Upload proof of KK approval for this ABYIP. This will finalize the approval process.
             </p>
             
-            {/* Debug Information */}
-            <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-              <strong>Debug Info:</strong><br/>
-              ABYIP ID: {existingABYIPId || 'None'}<br/>
-              Current Status: {form.status}<br/>
-              User Role: {user?.role}<br/>
-              File Selected: {kkProofFile ? 'Yes' : 'No'}<br/>
-              Date Selected: {kkApprovalDate || 'No'}<br/>
-              Can Approve: {user?.role === 'chairperson' && form.status === 'pending_kk_approval' ? 'Yes' : 'No'}
-            </div>
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2717,7 +2709,11 @@ const ABYIP: React.FC = () => {
                 value={kkApprovalDate}
                 onChange={(e) => setKkApprovalDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Select the date when Katipunan ng Kabataan approved this ABYIP
+              </p>
             </div>
 
             <div className="mb-4">
