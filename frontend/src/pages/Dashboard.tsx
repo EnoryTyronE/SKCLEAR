@@ -292,20 +292,23 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center space-x-6">
             <div className="text-right">
               <p className="text-sm text-gray-500">View Year</p>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="text-lg font-semibold text-primary-600 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer"
-              >
-                {Array.from({ length: 5 }, (_, i) => {
-                  const year = new Date().getFullYear() - 2 + i;
-                  return (
-                    <option key={year} value={year.toString()}>
-                      {year}
-                    </option>
-                  );
-                })}
-              </select>
+              <div className="relative">
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="text-lg font-semibold text-primary-600 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer pr-8"
+                >
+                  {Array.from({ length: 5 }, (_, i) => {
+                    const year = new Date().getFullYear() - 2 + i;
+                    return (
+                      <option key={year} value={year.toString()}>
+                        {year}
+                      </option>
+                    );
+                  })}
+                </select>
+                {/* Using native arrow; custom arrow removed to avoid double icons */}
+              </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500">Current Role</p>
