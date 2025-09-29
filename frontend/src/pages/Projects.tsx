@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Target, Plus, Calendar, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { getAllABYIPs, getAllSKAnnualBudgets, getProjectsByYear, upsertProject, updateProjectStatus, addProjectAttachment, deleteProjectsByYear, getProjectUpdates, addProjectUpdate, addProjectUpdateAttachment, removeProjectUpdateAttachment, clearProjectUpdateAttachments, updateProjectUpdate, updateProjectFields, ProjectDoc, ProjectUpdateDoc } from '../services/firebaseService';
+import { useAuth } from '../contexts/AuthContext';
+import { logProjectActivity } from '../services/activityService';
 import { formatTimeAgo, convertToDate } from '../services/activityService';
 
 type AbyipDoc = any;
@@ -8,6 +10,7 @@ type BudgetDoc = any;
 
 const Projects: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
   const [allAbyips, setAllAbyips] = useState<AbyipDoc[]>([]);
   const [allBudgets, setAllBudgets] = useState<BudgetDoc[]>([]);
   const [year, setYear] = useState<string>('');
@@ -658,6 +661,9 @@ const Projects: React.FC = () => {
                                     await addProjectUpdate(activeProject.id!, { date: d, status: 'ongoing', description: 'Project started', files: [] });
                                     // move to ongoing
                                     await updateProjectStatus(activeProject.id!, 'ongoing');
+                                    try {
+                                      await logProjectActivity('Started', `${activeProject.title} (Ref: ${activeProject.referenceCode || 'N/A'}) started on ${d.toLocaleDateString()}`, { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' }, 'completed');
+                                    } catch {}
                                     setActiveProject(prev => prev ? ({ ...prev, startDate: d, status: 'ongoing' }) : prev);
                                     // update projects list so cards reflect started status
                                     setProjects(prev => prev.map(p => p.id === activeProject.id ? { ...p, startDate: d, status: 'ongoing' } : p));
@@ -693,8 +699,11 @@ const Projects: React.FC = () => {
                                   alert('Please upload at least one proof document/photo before marking as Finished.');
                                   return;
                                 }
-                                await updateProjectStatus(activeProject.id!, 'finished');
+                              await updateProjectStatus(activeProject.id!, 'finished');
                                 setActiveProject(prev => prev ? ({ ...prev, status: 'finished' }) : prev);
+                              try {
+                                await logProjectActivity('Finished', `${activeProject.title} marked as finished`, { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' }, 'completed');
+                              } catch {}
                                 showNotice('Project marked as Finished');
                               } catch (err) {
                                 console.error(err);
@@ -747,6 +756,9 @@ const Projects: React.FC = () => {
                           description: newUpdate.description,
                           files: []
                         });
+                        try {
+                          await logProjectActivity('Updated', `${activeProject.title}: ${newUpdate.description}`, { name: user?.name || 'Unknown', role: user?.role || 'member', id: user?.uid || '' }, 'completed');
+                        } catch {}
                         const list = await getProjectUpdates(activeProject.id!);
                         setUpdates(list);
                         setNewUpdate({ date: '', status: 'ongoing', description: '' });

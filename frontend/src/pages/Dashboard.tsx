@@ -58,40 +58,36 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Mock data - replace with actual API calls
+  // Vital KPIs (placeholder values; hook up to real queries later)
   const stats = [
     {
-      name: 'Total Projects',
-      value: '12',
-      change: '+2',
-      changeType: 'positive',
-      icon: Target,
-      color: 'bg-blue-500',
-      href: '/projects'
-    },
-    {
       name: 'Active Projects',
-      value: '8',
-      change: '+1',
-      changeType: 'positive',
+      value: '—',
+      sub: 'Ongoing this year',
       icon: TrendingUp,
       color: 'bg-green-500',
       href: '/projects'
     },
     {
-      name: 'Budget Used',
-      value: '₱75,000',
-      change: '₱15,000',
-      changeType: 'neutral',
+      name: 'Budget Committed',
+      value: '—',
+      sub: 'Sum of ABYIP totals',
       icon: DollarSign,
       color: 'bg-yellow-500',
       href: '/budget'
     },
     {
+      name: 'Budget Used',
+      value: '—',
+      sub: 'From finished projects',
+      icon: DollarSign,
+      color: 'bg-indigo-500',
+      href: '/projects'
+    },
+    {
       name: 'Pending Approvals',
-      value: '3',
-      change: '-1',
-      changeType: 'negative',
+      value: '—',
+      sub: 'Awaiting KK/LCE',
       icon: AlertCircle,
       color: 'bg-red-500',
       href: '/budget'
@@ -207,17 +203,10 @@ const Dashboard: React.FC = () => {
                 <div className="ml-4 flex-1">
                   <p className="text-sm font-medium text-gray-600">{stat.name}</p>
                   <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  {stat.sub && <p className="text-xs text-gray-500 mt-0.5">{stat.sub}</p>}
                 </div>
               </div>
-              <div className="mt-4 flex items-center">
-                <span className={`text-sm font-medium ${
-                  stat.changeType === 'positive' ? 'text-green-600' :
-                  stat.changeType === 'negative' ? 'text-red-600' : 'text-gray-600'
-                }`}>
-                  {stat.change}
-                </span>
-                <span className="text-sm text-gray-500 ml-1">from last month</span>
-              </div>
+              {/* Optional trend slot reserved for future */}
             </Link>
           );
         })}

@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, query, orderBy, limit, where, Timestamp, s
 
 export interface Activity {
   id?: string;
-  type: 'budget' | 'abyip' | 'cbydp' | 'setup' | 'transparency' | 'user_management';
+  type: 'budget' | 'abyip' | 'cbydp' | 'setup' | 'transparency' | 'user_management' | 'projects';
   title: string;
   description: string;
   member: {
@@ -243,6 +243,22 @@ export const logTransparencyActivity = async (
     member,
     status,
     module: 'Transparency'
+  });
+};
+
+export const logProjectActivity = async (
+  action: string,
+  details: string,
+  member: { name: string; role: string; id: string },
+  status: 'completed' | 'ongoing' | 'pending' = 'completed'
+) => {
+  return logActivity({
+    type: 'projects',
+    title: `Project ${action}`,
+    description: details,
+    member,
+    status,
+    module: 'Projects'
   });
 };
 
