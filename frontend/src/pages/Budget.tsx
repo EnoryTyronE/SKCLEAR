@@ -1431,42 +1431,42 @@ const Budget: React.FC = () => {
             <div className="flex items-center space-x-4 mb-4">
               <label className="text-sm font-medium text-blue-900">Select Year:</label>
               <div className="relative">
-                <select
-                  value={selectedBudgetYear}
-                  onChange={(e) => {
-                    const newYear = e.target.value;
-                    setSelectedBudgetYear(newYear);
-                    
-                    if (newYear) {
-                      const budgetExists = budgets.some(budget => budget.year === newYear);
-                      if (budgetExists) {
-                        // Automatically load existing budget
-                        loadBudgetByYear(parseInt(newYear));
-                      } else {
-                        // Reset editing state for available years
-                        setIsEditing(false);
-                        setCurrentBudget(null);
-                        setPreview(false);
-                      }
+              <select
+                value={selectedBudgetYear}
+                onChange={(e) => {
+                  const newYear = e.target.value;
+                  setSelectedBudgetYear(newYear);
+                  
+                  if (newYear) {
+                    const budgetExists = budgets.some(budget => budget.year === newYear);
+                    if (budgetExists) {
+                      // Automatically load existing budget
+                      loadBudgetByYear(parseInt(newYear));
                     } else {
-                      // Reset editing state when no year selected
+                      // Reset editing state for available years
                       setIsEditing(false);
                       setCurrentBudget(null);
                       setPreview(false);
                     }
-                  }}
+                  } else {
+                    // Reset editing state when no year selected
+                    setIsEditing(false);
+                    setCurrentBudget(null);
+                    setPreview(false);
+                  }
+                }}
                   className="px-3 py-2 pr-8 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                >
-                  <option value="">Select a year</option>
-                  {generateYearOptions().map((year) => {
-                    const budgetExists = budgets.some(budget => budget.year === year);
-                    return (
-                      <option key={year} value={year}>
-                        {year} ({budgetExists ? 'Created' : 'Available'})
-                      </option>
-                    );
-                  })}
-                </select>
+              >
+                <option value="">Select a year</option>
+                {generateYearOptions().map((year) => {
+                  const budgetExists = budgets.some(budget => budget.year === year);
+                  return (
+                    <option key={year} value={year}>
+                      {year} ({budgetExists ? 'Created' : 'Available'})
+                    </option>
+                  );
+                })}
+              </select>
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

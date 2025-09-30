@@ -8,6 +8,7 @@ import ABYIP from './pages/ABYIP';
 import Budget from './pages/Budget';
 import Projects from './pages/Projects';
 import Transparency from './pages/Transparency';
+import Financial from './pages/Financial';
 import Layout from './components/Layout';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import PublicTransparency from './pages/PublicTransparency';
@@ -82,13 +83,7 @@ function App() {
               </ProtectedRoute>
             } />
             
-            <Route path="/budget" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Budget />
-                </Layout>
-              </ProtectedRoute>
-            } />
+            <Route path="/budget" element={<Navigate to="/financial" replace />} />
             
             <Route path="/projects" element={
               <ProtectedRoute>
@@ -102,6 +97,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Transparency />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/financial" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Financial />
                 </Layout>
               </ProtectedRoute>
             } />
