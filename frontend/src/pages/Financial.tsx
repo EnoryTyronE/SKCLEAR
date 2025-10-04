@@ -107,6 +107,9 @@ const Financial: React.FC = () => {
   const [rcbEntriesByYQ, setRcbEntriesByYQ] = useState<Record<string, RCBEntry[]>>({});
   const [showRcbPreview, setShowRcbPreview] = useState<boolean>(false);
   const [showRcbInstructions, setShowRcbInstructions] = useState<boolean>(false);
+  const [isEditingPeriodClosed, setIsEditingPeriodClosed] = useState<boolean>(false);
+  const [showPdfUpload, setShowPdfUpload] = useState<boolean>(false);
+  const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
 
   // Draft entry inputs
   const emptyDraft = (): RCBEntry => ({
@@ -367,6 +370,85 @@ const Financial: React.FC = () => {
     carryBalanceToNextQuarter();
   }, [quarter, financialYear]);
 
+  // Close editing period function
+  const closeEditingPeriod = async () => {
+    if (window.confirm('Are you sure you want to close the editing period for this quarter? This will make all forms read-only.')) {
+      setIsEditingPeriodClosed(true);
+      setShowPdfUpload(true);
+      
+      // Log activity
+      try {
+        await logActivity({
+          type: 'budget',
+          title: 'RCB Editing Period Closed',
+          description: `RCB editing period closed for ${quarter} ${financialYear}`,
+          member: {
+            name: user?.name || 'Unknown',
+            role: user?.role || 'user',
+            id: user?.uid || ''
+          },
+          status: 'completed',
+          module: 'Financial',
+          details: {
+            year: financialYear,
+            quarter: quarter
+          }
+        });
+      } catch (error) {
+        console.error('Error logging close editing period activity:', error);
+      }
+    }
+  };
+
+  // Handle PDF upload
+  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      setUploadedPdf(file);
+    } else {
+      alert('Please select a PDF file.');
+    }
+  };
+
+  // Submit signed RCB
+  const submitSignedRcb = async () => {
+    if (!uploadedPdf) {
+      alert('Please upload the signed RCB PDF first.');
+      return;
+    }
+
+    try {
+      // Here you would typically upload the PDF to Firebase Storage
+      // For now, we'll just simulate the upload
+      console.log('Uploading signed RCB PDF:', uploadedPdf.name);
+      
+      // Log activity
+      await logActivity({
+        type: 'budget',
+        title: 'Signed RCB Submitted',
+        description: `Signed RCB PDF submitted for ${quarter} ${financialYear}`,
+        member: {
+          name: user?.name || 'Unknown',
+          role: user?.role || 'user',
+          id: user?.uid || ''
+        },
+        status: 'completed',
+        module: 'Financial',
+        details: {
+          year: financialYear,
+          quarter: quarter,
+          fileName: uploadedPdf.name
+        }
+      });
+
+      setShowPdfUpload(false);
+      alert('Signed RCB submitted successfully! You can now proceed to the next quarter.');
+    } catch (error) {
+      console.error('Error submitting signed RCB:', error);
+      alert('Error submitting signed RCB. Please try again.');
+    }
+  };
+
   // Load SK Members
   const loadSKMembers = useCallback(async () => {
     try {
@@ -587,25 +669,43 @@ const Financial: React.FC = () => {
                   >
                     {showRcbPreview ? 'Hide Preview' : 'Print Preview'}
                   </button>
-                  <button 
-                    onClick={resetRCB}
-                    className="btn-secondary text-sm"
-                  >
-                    Reset
-                  </button>
-                  <button 
-                    onClick={handleSaveRCB}
-                    disabled={saving}
-                    className="btn-primary text-sm"
-                  >
-                    {saving ? 'Saving...' : 'Save RCB'}
-                  </button>
-                  <button 
-                    onClick={handleExportRCB}
-                    className="btn-secondary text-sm"
-                  >
-                    Export to Word
-                  </button>
+                  {!isEditingPeriodClosed && (
+                    <>
+                      <button 
+                        onClick={resetRCB}
+                        className="btn-secondary text-sm"
+                      >
+                        Reset
+                      </button>
+                      <button 
+                        onClick={handleSaveRCB}
+                        disabled={saving}
+                        className="btn-primary text-sm"
+                      >
+                        {saving ? 'Saving...' : 'Save RCB'}
+                      </button>
+                      <button 
+                        onClick={handleExportRCB}
+                        className="btn-secondary text-sm"
+                      >
+                        Export to Word
+                      </button>
+                      <button 
+                        onClick={closeEditingPeriod}
+                        className="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 text-sm"
+                      >
+                        Close Editing Period
+                      </button>
+                    </>
+                  )}
+                  {isEditingPeriodClosed && (
+                    <div className="flex items-center gap-2 text-sm text-orange-600">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      Editing Period Closed
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -687,6 +787,16 @@ const Financial: React.FC = () => {
                 <div className="mb-4">
                   <div className="text-lg font-semibold text-gray-900">RCB Data Entry</div>
                   <div className="text-sm text-gray-600">Configure columns and add entries for {quarter} {financialYear}</div>
+                  {isEditingPeriodClosed && (
+                    <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-md">
+                      <div className="flex items-center gap-2 text-orange-800">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-sm font-medium">Editing period is closed. Forms are read-only.</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* RCB Metadata */}
@@ -701,6 +811,7 @@ const Financial: React.FC = () => {
                           onChange={e => updateRcbMetadata(m => ({ ...m, fund: e.target.value }))}
                           className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
                           placeholder="SK Fund"
+                          readOnly={isEditingPeriodClosed}
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -710,6 +821,7 @@ const Financial: React.FC = () => {
                           onChange={e => updateRcbMetadata(m => ({ ...m, sheetNo: e.target.value }))}
                           className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
                           placeholder="1"
+                          readOnly={isEditingPeriodClosed}
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -720,6 +832,7 @@ const Financial: React.FC = () => {
                           onChange={e => updateRcbMetadata(m => ({ ...m, balanceBroughtForward: toNumber(e.target.value) }))}
                           className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
                           placeholder="0.00"
+                          readOnly={isEditingPeriodClosed}
                         />
                       </div>
                       {entries.length > 0 && (
@@ -857,32 +970,38 @@ const Financial: React.FC = () => {
                 <tbody>
                   {/* Input row */}
                   <tr className="bg-yellow-50">
-                    <td className="border p-1"><input type="date" value={draft.date} onChange={e=>setDraft({...draft, date: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
-                    <td className="border p-1"><input value={draft.reference} onChange={e=>setDraft({...draft, reference: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
-                    <td className="border p-1"><input value={draft.payee} onChange={e=>setDraft({...draft, payee: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
-                    <td className="border p-1"><input value={draft.particulars} onChange={e=>setDraft({...draft, particulars: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
-                    <td className="border p-1"><input value={draft.deposit} onChange={e=>setDraft({...draft, deposit: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
-                    <td className="border p-1"><input value={draft.withdrawal} onChange={e=>setDraft({...draft, withdrawal: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
+                    <td className="border p-1"><input type="date" value={draft.date} onChange={e=>setDraft({...draft, date: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
+                    <td className="border p-1"><input value={draft.reference} onChange={e=>setDraft({...draft, reference: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
+                    <td className="border p-1"><input value={draft.payee} onChange={e=>setDraft({...draft, payee: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
+                    <td className="border p-1"><input value={draft.particulars} onChange={e=>setDraft({...draft, particulars: e.target.value})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
+                    <td className="border p-1"><input value={draft.deposit} onChange={e=>setDraft({...draft, deposit: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
+                    <td className="border p-1"><input value={draft.withdrawal} onChange={e=>setDraft({...draft, withdrawal: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
                     <td className="border p-1 text-right text-gray-500">{draft.balance.toLocaleString()}</td>
                     {rcbSettings.mooeAccounts.map((n,i)=>(
-                      <td key={`mooei-${i}`} className="border p-1"><input value={draft.mooe[n]} onChange={e=>setDraft({...draft, mooe: {...draft.mooe, [n]: toNumber(e.target.value)}})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
+                      <td key={`mooei-${i}`} className="border p-1"><input value={draft.mooe[n]} onChange={e=>setDraft({...draft, mooe: {...draft.mooe, [n]: toNumber(e.target.value)}})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
                     ))}
                     {rcbSettings.coAccounts.map((n,i)=>(
-                      <td key={`coi-${i}`} className="border p-1"><input value={draft.co[n]} onChange={e=>setDraft({...draft, co: {...draft.co, [n]: toNumber(e.target.value)}})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
+                      <td key={`coi-${i}`} className="border p-1"><input value={draft.co[n]} onChange={e=>setDraft({...draft, co: {...draft.co, [n]: toNumber(e.target.value)}})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
                     ))}
-                    <td className="border p-1"><input value={draft.advOfficials} onChange={e=>setDraft({...draft, advOfficials: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
-                    <td className="border p-1"><input value={draft.advTreasurer} onChange={e=>setDraft({...draft, advTreasurer: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
+                    <td className="border p-1"><input value={draft.advOfficials} onChange={e=>setDraft({...draft, advOfficials: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
+                    <td className="border p-1"><input value={draft.advTreasurer} onChange={e=>setDraft({...draft, advTreasurer: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
                     {rcbSettings.withholdingTypes.map((n,i)=>(
-                      <td key={`wti-${i}`} className="border p-1"><input value={draft.withholding[n] || 0} onChange={e=>setDraft({...draft, withholding: {...draft.withholding, [n]: toNumber(e.target.value)}})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
+                      <td key={`wti-${i}`} className="border p-1"><input value={draft.withholding[n] || 0} onChange={e=>setDraft({...draft, withholding: {...draft.withholding, [n]: toNumber(e.target.value)}})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
                     ))}
-                    <td className="border p-1"><input value={draft.others} onChange={e=>setDraft({...draft, others: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs"/></td>
+                    <td className="border p-1"><input value={draft.others} onChange={e=>setDraft({...draft, others: toNumber(e.target.value)})} className="w-full border border-gray-300 rounded px-1 py-1 text-xs" readOnly={isEditingPeriodClosed}/></td>
                     <td className="border p-1"></td>
                   </tr>
                   <tr>
                     <td className="border p-1" colSpan={
                       7 + rcbSettings.mooeAccounts.length + rcbSettings.coAccounts.length + 2 + 1 + rcbSettings.withholdingTypes.length + 1
                     }>
-                      <button className="btn-primary text-xs" onClick={addEntry}>Add entry</button>
+                      <button 
+                        className="btn-primary text-xs" 
+                        onClick={addEntry}
+                        disabled={isEditingPeriodClosed}
+                      >
+                        Add entry
+                      </button>
                     </td>
                     <td className="border p-1"></td>
                   </tr>
@@ -1312,6 +1431,65 @@ const Financial: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* PDF Upload Modal */}
+      {showPdfUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Upload Signed RCB PDF</h3>
+              <button
+                onClick={() => setShowPdfUpload(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-3">
+                Please upload the signed PDF of the RCB for {quarter} {financialYear}. This is required before proceeding to the next quarter.
+              </p>
+              
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handlePdfUpload}
+                  className="hidden"
+                  id="pdf-upload"
+                />
+                <label htmlFor="pdf-upload" className="cursor-pointer">
+                  <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <p className="text-sm text-gray-600">
+                    {uploadedPdf ? uploadedPdf.name : 'Click to upload signed RCB PDF'}
+                  </p>
+                </label>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPdfUpload(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitSignedRcb}
+                disabled={!uploadedPdf}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Submit Signed RCB
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
