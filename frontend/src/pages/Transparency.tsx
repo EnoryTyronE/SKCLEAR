@@ -22,12 +22,13 @@ const Transparency: React.FC = () => {
   const [showActivityHistory, setShowActivityHistory] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
-    type: '',
     module: '',
-    status: ''
+    dateFrom: '',
+    dateTo: ''
   });
   const [hasMore, setHasMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<any>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Preview modals state
   const [showABYIPPreview, setShowABYIPPreview] = useState(false);
@@ -68,20 +69,21 @@ const Transparency: React.FC = () => {
   const fetchActivities = async (reset = false) => {
     setLoading(true);
     try {
-      // Create filter object with only non-empty values
-      const filterObj = Object.values(filters).some(f => f) ? {
-        ...(filters.type && { type: filters.type }),
-        ...(filters.module && { module: filters.module }),
-        ...(filters.status && { status: filters.status })
-      } : undefined;
+      // Build filter object (module + date range)
+      const filterObj = {
+        ...(filters.module ? { module: filters.module } : {}),
+        ...(filters.dateFrom ? { dateFrom: new Date(filters.dateFrom) } : {}),
+        ...(filters.dateTo ? { dateTo: new Date(filters.dateTo) } : {})
+      } as any;
 
       console.log('Fetching activities with filters:', filterObj);
       
       const result = await getAllActivities(
-        filterObj,
+        Object.keys(filterObj).length ? filterObj : undefined,
         20,
         reset ? undefined : lastDoc
       );
+      
       
       if (reset) {
         setActivities(result.activities);
@@ -99,8 +101,14 @@ const Transparency: React.FC = () => {
 
   // Load more activities
   const loadMoreActivities = () => {
-    if (hasMore && !loading) {
-      fetchActivities(false);
+    if (hasMore && !loading && !isLoadingMore && lastDoc) {
+      console.log('Loading more activities, lastDoc:', lastDoc.id);
+      setIsLoadingMore(true);
+      fetchActivities(false).finally(() => {
+        setIsLoadingMore(false);
+      });
+    } else if (!lastDoc) {
+      console.log('No lastDoc available, cannot load more');
     }
   };
 
@@ -112,7 +120,7 @@ const Transparency: React.FC = () => {
 
   // Clear filters
   const clearFilters = () => {
-    setFilters({ type: '', module: '', status: '' });
+    setFilters({ module: '', dateFrom: '', dateTo: '' });
     setLastDoc(null);
     fetchActivities(true);
   };
@@ -134,7 +142,7 @@ const Transparency: React.FC = () => {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [filters.type, filters.module, filters.status]);
+  }, [filters.module, filters.dateFrom, filters.dateTo]);
 
   const handleUploadReport = async () => {
     // For now, just log the activity when upload button is clicked
@@ -351,10 +359,10 @@ const Transparency: React.FC = () => {
               ))}
             </div>
           )}
-        </div>
+      </div>
 
         {/* SK Members Directory */}
-        <div className="card p-6">
+      <div className="card p-6">
           <div className="flex items-center gap-2 mb-4">
             <Users className="h-6 w-6 text-indigo-600" />
             <h2 className="text-xl font-semibold">SK Officials Directory</h2>
@@ -430,8 +438,8 @@ const Transparency: React.FC = () => {
               </div>
 
               {showFilters && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-                  <div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Module</label>
                     <select
                       value={filters.module}
@@ -439,42 +447,31 @@ const Transparency: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">All Modules</option>
-                      <option value="Budget">Budget</option>
                       <option value="ABYIP">ABYIP</option>
                       <option value="CBYDP">CBYDP</option>
-                      <option value="SK Setup">SK Setup</option>
-                      <option value="Transparency">Transparency</option>
+                      <option value="Financial">Financial</option>
+                      <option value="Projects">Projects</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                    <select
-                      value={filters.type}
-                      onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date From</label>
+                    <input
+                      type="date"
+                      value={filters.dateFrom}
+                      onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">All Types</option>
-                      <option value="budget">Budget</option>
-                      <option value="abyip">ABYIP</option>
-                      <option value="cbydp">CBYDP</option>
-                      <option value="setup">Setup</option>
-                      <option value="transparency">Transparency</option>
-                    </select>
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select
-                      value={filters.status}
-                      onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date To</label>
+                    <input
+                      type="date"
+                      value={filters.dateTo}
+                      onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">All Status</option>
-                      <option value="completed">Completed</option>
-                      <option value="ongoing">Ongoing</option>
-                      <option value="pending">Pending</option>
-                    </select>
+                    />
                   </div>
-                  <div className="md:col-span-3 flex gap-2">
+                  <div className="md:col-span-2 flex gap-2">
                     <button
                       onClick={applyFilters}
                       className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -487,6 +484,7 @@ const Transparency: React.FC = () => {
                     >
                       Clear Filters
                     </button>
+                    {/* Debug button removed */}
                     <div className="text-sm text-gray-500 flex items-center">
                       <span className="text-xs">Filters apply automatically</span>
                     </div>
@@ -510,23 +508,16 @@ const Transparency: React.FC = () => {
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-2">
                             {activity.module}
                           </span>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            activity.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            activity.status === 'ongoing' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {activity.status}
-                          </span>
                         </div>
                         <h4 className="font-medium text-gray-900 mb-1">{activity.title}</h4>
                         <p className="text-sm text-gray-600 mb-2">{activity.description}</p>
                         <div className="flex items-center text-xs text-gray-500">
-                          <span>By: {activity.member.name} ({activity.member.role})</span>
+                          <span>By: {activity.member?.name || 'Unknown'} ({activity.member?.role || 'Unknown'})</span>
                           <span className="mx-2">•</span>
                           <span>{formatTimeAgo(activity.timestamp)}</span>
                         </div>
         </div>
-                    </div>
+      </div>
                   </div>
                 ))
               )}
@@ -536,10 +527,10 @@ const Transparency: React.FC = () => {
                 <div className="text-center pt-4">
                   <button
                     onClick={loadMoreActivities}
-                    disabled={loading}
+                    disabled={loading || isLoadingMore}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loading ? 'Loading...' : 'Load More'}
+                    {loading || isLoadingMore ? 'Loading...' : 'Load More'}
                   </button>
                 </div>
               )}

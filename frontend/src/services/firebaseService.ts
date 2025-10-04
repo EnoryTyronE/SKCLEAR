@@ -10,7 +10,8 @@ import {
   query, 
   where, 
   orderBy,
-  serverTimestamp 
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import googleDriveService from './googleDriveService';
@@ -834,6 +835,54 @@ export const updateProjectUpdate = async (
     return true;
   } catch (error) {
     console.error('Error updating project update:', error);
+    throw error;
+  }
+};
+
+// RCB (Register of Cash in Bank) Functions
+export const saveRCBData = async (yearQuarter: string, rcbData: {
+  settings: any;
+  metadata: any;
+  entries: any[];
+}) => {
+  try {
+    const rcbRef = doc(db, 'rcb', yearQuarter);
+    await setDoc(rcbRef, {
+      ...rcbData,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp()
+    });
+    console.log('RCB data saved successfully for:', yearQuarter);
+    return true;
+  } catch (error) {
+    console.error('Error saving RCB data:', error);
+    throw error;
+  }
+};
+
+export const loadRCBData = async (yearQuarter: string) => {
+  try {
+    const rcbRef = doc(db, 'rcb', yearQuarter);
+    const rcbSnap = await getDoc(rcbRef);
+    
+    if (rcbSnap.exists()) {
+      const data = rcbSnap.data();
+      console.log('RCB data loaded successfully for:', yearQuarter);
+      return {
+        settings: data.settings || {},
+        metadata: data.metadata || {},
+        entries: data.entries || []
+      };
+    } else {
+      console.log('No RCB data found for:', yearQuarter);
+      return {
+        settings: {},
+        metadata: {},
+        entries: []
+      };
+    }
+  } catch (error) {
+    console.error('Error loading RCB data:', error);
     throw error;
   }
 };

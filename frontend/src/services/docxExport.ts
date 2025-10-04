@@ -806,4 +806,484 @@ export function mapBudgetToTemplate(payload: any) {
   return finalResult;
 }
 
+export function mapRCBToTemplate(payload: any) {
+  console.log('Mapping RCB data:', payload);
+  console.log('RCB Form data:', payload.form);
+  console.log('SK Profile:', payload.skProfile);
+  console.log('SK Members:', payload.skMembers);
+  
+  // Follow the same pattern as Budget component
+  const rcbForm = payload.form;
+  const skProfile = payload.skProfile;
+  const skMembers = payload.skMembers || [];
+  
+  // Validate required data
+  if (!rcbForm) {
+    console.error('RCB form data is missing!');
+    return {};
+  }
+  
+  if (!rcbForm.settings) {
+    console.error('RCB settings are missing!');
+  }
+  
+  if (!rcbForm.metadata) {
+    console.error('RCB metadata are missing!');
+  }
+  
+  if (!rcbForm.entries) {
+    console.error('RCB entries are missing!');
+  }
+  
+  // Get member names
+  const treasurer = skMembers.find((m: any) => m.role === 'treasurer');
+  const chairperson = skMembers.find((m: any) => m.role === 'chairperson');
+  
+  const treasurerName = treasurer?.name || 'SK Treasurer';
+  const chairpersonName = chairperson?.name || 'SK Chairperson';
+  
+  const quarterMonths = {
+    'Q1': 'January - March',
+    'Q2': 'April - June', 
+    'Q3': 'July - September',
+    'Q4': 'October - December'
+  };
+  
+  const quarterDisplay = {
+    'Q1': '1st',
+    'Q2': '2nd', 
+    'Q3': '3rd',
+    'Q4': '4th'
+  };
+  
+  // Get the actual quarter and year from the data
+  const actualQuarter = rcbForm.quarter || 'Q1';
+  const actualYear = rcbForm.financialYear || new Date().getFullYear();
+  
+  // Helper function to format numbers - return blank if zero
+  const fmt = (n: number) => {
+    if (typeof n !== 'number' || n === 0) return '';
+    return n.toLocaleString();
+  };
+  
+  // Build dynamic table headers based on settings
+  const mooeHeaders = rcbForm.settings?.mooeAccounts || ['Travelling Expenses', 'Maintenance/Other Operating'];
+  const coHeaders = rcbForm.settings?.coAccounts || ['Office Equipment'];
+  const withholdingHeaders = rcbForm.settings?.withholdingTypes || ['Type 1', 'Type 2'];
+  
+  console.log('RCB Form Settings:', rcbForm.settings);
+  console.log('MOOE Accounts:', mooeHeaders);
+  console.log('CO Accounts:', coHeaders);
+  console.log('Withholding Types:', withholdingHeaders);
+  console.log('RCB Form Entries:', rcbForm.entries);
+  console.log('RCB Form Metadata:', rcbForm.metadata);
+  
+  console.log('RCB Headers:', { mooeHeaders, coHeaders, withholdingHeaders });
+  console.log('Number of MOOE columns:', mooeHeaders.length);
+  console.log('Number of CO columns:', coHeaders.length);
+  console.log('Number of Withholding columns:', withholdingHeaders.length);
+  
+  // Calculate totals
+  console.log('=== CALCULATING TOTALS ===');
+  const totals = rcbForm.entries?.reduce((acc: any, entry: any) => {
+    console.log('Processing entry for totals:', entry);
+    acc.deposit += entry.deposit || 0;
+    acc.withdrawal += entry.withdrawal || 0;
+    acc.balance = entry.balance || 0; // Last entry's balance
+    acc.advOfficials += entry.advOfficials || 0;
+    acc.advTreasurer += entry.advTreasurer || 0;
+    acc.others += entry.others || 0;
+    
+    // MOOE totals
+    mooeHeaders.forEach((header: string) => {
+      if (!acc.mooe) acc.mooe = {};
+      acc.mooe[header] = (acc.mooe[header] || 0) + (entry.mooe?.[header] || 0);
+    });
+    
+    // CO totals
+    coHeaders.forEach((header: string) => {
+      if (!acc.co) acc.co = {};
+      acc.co[header] = (acc.co[header] || 0) + (entry.co?.[header] || 0);
+    });
+    
+    // Withholding totals
+    withholdingHeaders.forEach((header: string) => {
+      if (!acc.withholding) acc.withholding = {};
+      acc.withholding[header] = (acc.withholding[header] || 0) + (entry.withholding?.[header] || 0);
+    });
+    
+    console.log('Accumulated totals so far:', acc);
+    return acc;
+  }, {
+    deposit: 0,
+    withdrawal: 0,
+    balance: 0,
+    advOfficials: 0,
+    advTreasurer: 0,
+    others: 0,
+    mooe: {},
+    co: {},
+    withholding: {}
+  }) || {
+    deposit: 0,
+    withdrawal: 0,
+    balance: 0,
+    advOfficials: 0,
+    advTreasurer: 0,
+    others: 0,
+    mooe: {},
+    co: {},
+    withholding: {}
+  };
+  
+  console.log('Final calculated totals:', totals);
+  
+  const result = {
+    // Header information
+    logo: skProfile?.logo || '',
+    barangay: skProfile?.barangay || '',
+    city: skProfile?.city || '',
+    province: skProfile?.province || '',
+    quarter: quarterDisplay[actualQuarter as keyof typeof quarterDisplay],
+    quarter_months: quarterMonths[actualQuarter as keyof typeof quarterMonths] || '',
+    quarter_code: actualQuarter,
+    calendar_year: actualYear,
+    fund: rcbForm.metadata?.fund || '',
+    sheet_no: rcbForm.metadata?.sheetNo || '',
+    
+    // Dynamic column structure for automatic column creation
+    dynamic_columns: {
+      // MOOE columns
+      mooe: mooeHeaders.map((header: string, index: number) => ({
+        header: String(header || ''),
+        index: index,
+        type: 'mooe'
+      })),
+      // CO columns
+      co: coHeaders.map((header: string, index: number) => ({
+        header: String(header || ''),
+        index: index,
+        type: 'co'
+      })),
+      // Withholding columns
+      withholding: withholdingHeaders.map((header: string, index: number) => ({
+        header: String(header || ''),
+        index: index,
+        type: 'withholding'
+      }))
+    },
+    
+    // Header structure that matches the 3-row template exactly
+    // Row 1: Main headers (Date, Reference, Name of Payee, Particulars, Cash in Bank, BREAKDOWN, Withholding Tax)
+    // Row 2: Sub-groups (Deposit, Withdrawal, Balance, MOOE, Capital Outlay, Advances, Others, Withholding Tax)
+    // Row 3: Individual sub-columns (actual account names)
+    
+    // MOOE sub-columns (Row 3 under "Maintenance and Other Operating Expenses")
+    mooe_sub_columns: mooeHeaders.map((header: string, index: number) => ({
+      header: String(header || ''),
+      index: index,
+      type: 'mooe'
+    })),
+    
+    // CO sub-columns (Row 3 under "Capital Outlay") 
+    co_sub_columns: coHeaders.map((header: string, index: number) => ({
+      header: String(header || ''),
+      index: index,
+      type: 'co'
+    })),
+    
+    // Withholding sub-columns (Row 3 under "Withholding Tax")
+    withholding_sub_columns: withholdingHeaders.map((header: string, index: number) => ({
+      header: String(header || ''),
+      index: index,
+      type: 'withholding'
+    })),
+    
+    // Column counts for colspan calculations
+    mooe_colspan: mooeHeaders.length,
+    co_colspan: coHeaders.length,
+    withholding_colspan: withholdingHeaders.length,
+    
+    // Individual column headers for separate table columns (max 3 each)
+    mooe_col_1: mooeHeaders[0] || '',
+    mooe_col_2: mooeHeaders[1] || '',
+    mooe_col_3: mooeHeaders[2] || '',
+    
+    co_col_1: coHeaders[0] || '',
+    co_col_2: coHeaders[1] || '',
+    co_col_3: coHeaders[2] || '',
+    
+    withholding_col_1: withholdingHeaders[0] || '',
+    withholding_col_2: withholdingHeaders[1] || '',
+    withholding_col_3: withholdingHeaders[2] || '',
+    
+    // Conditional flags to show/hide columns (max 3 each) - converted to strings for template
+    has_mooe_col_1: String(mooeHeaders.length >= 1),
+    has_mooe_col_2: String(mooeHeaders.length >= 2),
+    has_mooe_col_3: String(mooeHeaders.length >= 3),
+    
+    has_co_col_1: String(coHeaders.length >= 1),
+    has_co_col_2: String(coHeaders.length >= 2),
+    has_co_col_3: String(coHeaders.length >= 3),
+    
+    has_withholding_col_1: String(withholdingHeaders.length >= 1),
+    has_withholding_col_2: String(withholdingHeaders.length >= 2),
+    has_withholding_col_3: String(withholdingHeaders.length >= 3),
+    
+    // Column counts for template logic
+    column_counts: {
+      mooe: mooeHeaders.length,
+      co: coHeaders.length,
+      withholding: withholdingHeaders.length,
+      total: mooeHeaders.length + coHeaders.length + withholdingHeaders.length
+    },
+    
+    // Balance brought forward
+    balance_brought_forward: fmt(rcbForm.metadata?.balanceBroughtForward || 0),
+    
+    // Totals/Balance brought forwarded (same structure as carried forward)
+    totals_brought_forward: {
+      deposit: '0.00',
+      withdrawal: '0.00', 
+      balance: fmt(rcbForm.metadata?.balanceBroughtForward || 0),
+      adv_officials: '0.00',
+      adv_treasurer: '0.00',
+      others: '0.00',
+      // Dynamic totals - all zeros for brought forward
+      mooe_totals: mooeHeaders.map(() => '0.00'),
+      co_totals: coHeaders.map(() => '0.00'),
+      withholding_totals: withholdingHeaders.map(() => '0.00'),
+      
+      // Individual column totals for separate table columns (max 3 each) - all zeros for brought forward
+      mooe_total_1: '0.00',
+      mooe_total_2: '0.00',
+      mooe_total_3: '0.00',
+      
+      co_total_1: '0.00',
+      co_total_2: '0.00',
+      co_total_3: '0.00',
+      
+      withholding_total_1: '0.00',
+      withholding_total_2: '0.00',
+      withholding_total_3: '0.00',
+    },
+    
+    // Entries with dynamic column structure
+    entries: (rcbForm.entries || []).map((entry: any, index: number) => {
+      console.log(`Processing entry ${index}:`, entry);
+      
+      // Create dynamic column values
+      const mooeValues = mooeHeaders.map((header: string) => {
+        const value = entry.mooe?.[header] || 0;
+        console.log(`MOOE ${header}:`, value);
+        return String(fmt(value));
+      });
+      
+      const coValues = coHeaders.map((header: string) => {
+        const value = entry.co?.[header] || 0;
+        console.log(`CO ${header}:`, value);
+        return String(fmt(value));
+      });
+      
+      const withholdingValues = withholdingHeaders.map((header: string) => {
+        const value = entry.withholding?.[header] || 0;
+        console.log(`Withholding ${header}:`, value);
+        return String(fmt(value));
+      });
+      
+      return {
+        date: String(entry.date || ''),
+        reference: String(entry.reference || ''),
+        payee: String(entry.payee || ''),
+        particulars: String(entry.particulars || ''),
+        deposit: fmt(entry.deposit || 0),
+        withdrawal: fmt(entry.withdrawal || 0),
+        balance: fmt(entry.balance || 0),
+        adv_officials: fmt(entry.advOfficials || 0),
+        adv_treasurer: fmt(entry.advTreasurer || 0),
+        others: fmt(entry.others || 0),
+        
+        // Simple value arrays - just like entries
+        mooe_values: mooeValues.map((value: string) => ({ value: value })),
+        co_values: coValues.map((value: string) => ({ value: value })),
+        withholding_values: withholdingValues.map((value: string) => ({ value: value })),
+        
+        // Individual column values for separate table columns (max 3 each) - blank if zero
+        mooe_val_1: mooeValues[0] || '',
+        mooe_val_2: mooeValues[1] || '',
+        mooe_val_3: mooeValues[2] || '',
+        
+        co_val_1: coValues[0] || '',
+        co_val_2: coValues[1] || '',
+        co_val_3: coValues[2] || '',
+        
+        withholding_val_1: withholdingValues[0] || '',
+        withholding_val_2: withholdingValues[1] || '',
+        withholding_val_3: withholdingValues[2] || '',
+        
+      };
+    }),
+    
+    // Totals for the quarter with dynamic structure
+    totals_quarter: {
+      deposit: fmt(totals.deposit),
+      withdrawal: fmt(totals.withdrawal),
+      balance: fmt(totals.balance),
+      adv_officials: fmt(totals.advOfficials),
+      adv_treasurer: fmt(totals.advTreasurer),
+      others: fmt(totals.others),
+      
+      // Simple totals arrays - just like entries
+      mooe_totals: mooeHeaders.map((header: string) => ({ value: String(fmt(totals.mooe?.[header] || 0)) })),
+      co_totals: coHeaders.map((header: string) => ({ value: String(fmt(totals.co?.[header] || 0)) })),
+      withholding_totals: withholdingHeaders.map((header: string) => ({ value: String(fmt(totals.withholding?.[header] || 0)) })),
+      
+      // Individual column totals for separate table columns (max 3 each) - blank if zero
+      mooe_total_1: fmt(totals.mooe?.[mooeHeaders[0]] || 0),
+      mooe_total_2: fmt(totals.mooe?.[mooeHeaders[1]] || 0),
+      mooe_total_3: fmt(totals.mooe?.[mooeHeaders[2]] || 0),
+      
+      co_total_1: fmt(totals.co?.[coHeaders[0]] || 0),
+      co_total_2: fmt(totals.co?.[coHeaders[1]] || 0),
+      co_total_3: fmt(totals.co?.[coHeaders[2]] || 0),
+      
+      withholding_total_1: fmt(totals.withholding?.[withholdingHeaders[0]] || 0),
+      withholding_total_2: fmt(totals.withholding?.[withholdingHeaders[1]] || 0),
+      withholding_total_3: fmt(totals.withholding?.[withholdingHeaders[2]] || 0),
+    },
+    
+    // Totals/Balance carried forward (same values as quarter totals)
+    totals_carried_forward: {
+      deposit: fmt(totals.deposit),
+      withdrawal: fmt(totals.withdrawal),
+      balance: fmt(totals.balance),
+      adv_officials: fmt(totals.advOfficials),
+      adv_treasurer: fmt(totals.advTreasurer),
+      others: fmt(totals.others),
+      
+      // Simple totals arrays - just like entries
+      mooe_totals: mooeHeaders.map((header: string) => ({ value: String(fmt(totals.mooe?.[header] || 0)) })),
+      co_totals: coHeaders.map((header: string) => ({ value: String(fmt(totals.co?.[header] || 0)) })),
+      withholding_totals: withholdingHeaders.map((header: string) => ({ value: String(fmt(totals.withholding?.[header] || 0)) })),
+      
+      // Individual column totals for separate table columns (max 3 each) - blank if zero
+      mooe_total_1: fmt(totals.mooe?.[mooeHeaders[0]] || 0),
+      mooe_total_2: fmt(totals.mooe?.[mooeHeaders[1]] || 0),
+      mooe_total_3: fmt(totals.mooe?.[mooeHeaders[2]] || 0),
+      
+      co_total_1: fmt(totals.co?.[coHeaders[0]] || 0),
+      co_total_2: fmt(totals.co?.[coHeaders[1]] || 0),
+      co_total_3: fmt(totals.co?.[coHeaders[2]] || 0),
+      
+      withholding_total_1: fmt(totals.withholding?.[withholdingHeaders[0]] || 0),
+      withholding_total_2: fmt(totals.withholding?.[withholdingHeaders[1]] || 0),
+      withholding_total_3: fmt(totals.withholding?.[withholdingHeaders[2]] || 0),
+    },
+    
+    // Signatures
+    treasurer_name: treasurerName,
+    chairperson_name: chairpersonName,
+  };
+  
+  // FINAL VALIDATION: Ensure no undefined values make it to the template
+  // Use flattened structure for better docxtemplater compatibility (like Budget)
+  const finalResult = {
+    ...result,
+    // Flattened structure for template compatibility with [[]] delimiters
+    'logo': String(result.logo || ''),
+    'barangay': String(result.barangay || ''),
+    'city': String(result.city || ''),
+    'province': String(result.province || ''),
+    'quarter': String(result.quarter || ''),
+    'quarter_months': String(result.quarter_months || ''),
+    'quarter_code': String(result.quarter_code || ''),
+    'calendar_year': String(result.calendar_year || ''),
+    'fund': String(result.fund || ''),
+    'sheet_no': String(result.sheet_no || ''),
+    'balance_brought_forward': String(result.balance_brought_forward || '0'),
+    'treasurer_name': String(result.treasurer_name || ''),
+    'chairperson_name': String(result.chairperson_name || ''),
+    // Flattened totals structure to prevent undefined values - blank if zero
+    'totals_quarter.deposit': String(result.totals_quarter?.deposit || ''),
+    'totals_quarter.withdrawal': String(result.totals_quarter?.withdrawal || ''),
+    'totals_quarter.balance': String(result.totals_quarter?.balance || ''),
+    'totals_quarter.adv_officials': String(result.totals_quarter?.adv_officials || ''),
+    'totals_quarter.adv_treasurer': String(result.totals_quarter?.adv_treasurer || ''),
+    'totals_quarter.others': String(result.totals_quarter?.others || ''),
+    'totals_carried_forward.deposit': String(result.totals_carried_forward?.deposit || ''),
+    'totals_carried_forward.withdrawal': String(result.totals_carried_forward?.withdrawal || ''),
+    'totals_carried_forward.balance': String(result.totals_carried_forward?.balance || ''),
+    'totals_carried_forward.adv_officials': String(result.totals_carried_forward?.adv_officials || ''),
+    'totals_carried_forward.adv_treasurer': String(result.totals_carried_forward?.adv_treasurer || ''),
+    'totals_carried_forward.others': String(result.totals_carried_forward?.others || ''),
+    'totals_brought_forward.deposit': String(result.totals_brought_forward?.deposit || '0.00'),
+    'totals_brought_forward.withdrawal': String(result.totals_brought_forward?.withdrawal || '0.00'),
+    'totals_brought_forward.balance': String(result.totals_brought_forward?.balance || '0.00'),
+    'totals_brought_forward.adv_officials': String(result.totals_brought_forward?.adv_officials || '0.00'),
+    'totals_brought_forward.adv_treasurer': String(result.totals_brought_forward?.adv_treasurer || '0.00'),
+    'totals_brought_forward.others': String(result.totals_brought_forward?.others || '0.00'),
+    
+    // Flattened individual column totals to prevent undefined values - blank if zero
+    'totals_quarter.mooe_total_1': String(result.totals_quarter?.mooe_total_1 || ''),
+    'totals_quarter.mooe_total_2': String(result.totals_quarter?.mooe_total_2 || ''),
+    'totals_quarter.mooe_total_3': String(result.totals_quarter?.mooe_total_3 || ''),
+    'totals_quarter.co_total_1': String(result.totals_quarter?.co_total_1 || ''),
+    'totals_quarter.co_total_2': String(result.totals_quarter?.co_total_2 || ''),
+    'totals_quarter.co_total_3': String(result.totals_quarter?.co_total_3 || ''),
+    'totals_quarter.withholding_total_1': String(result.totals_quarter?.withholding_total_1 || ''),
+    'totals_quarter.withholding_total_2': String(result.totals_quarter?.withholding_total_2 || ''),
+    'totals_quarter.withholding_total_3': String(result.totals_quarter?.withholding_total_3 || ''),
+    
+    'totals_carried_forward.mooe_total_1': String(result.totals_carried_forward?.mooe_total_1 || ''),
+    'totals_carried_forward.mooe_total_2': String(result.totals_carried_forward?.mooe_total_2 || ''),
+    'totals_carried_forward.mooe_total_3': String(result.totals_carried_forward?.mooe_total_3 || ''),
+    'totals_carried_forward.co_total_1': String(result.totals_carried_forward?.co_total_1 || ''),
+    'totals_carried_forward.co_total_2': String(result.totals_carried_forward?.co_total_2 || ''),
+    'totals_carried_forward.co_total_3': String(result.totals_carried_forward?.co_total_3 || ''),
+    'totals_carried_forward.withholding_total_1': String(result.totals_carried_forward?.withholding_total_1 || ''),
+    'totals_carried_forward.withholding_total_2': String(result.totals_carried_forward?.withholding_total_2 || ''),
+    'totals_carried_forward.withholding_total_3': String(result.totals_carried_forward?.withholding_total_3 || ''),
+    
+    'totals_brought_forward.mooe_total_1': String(result.totals_brought_forward?.mooe_total_1 || '0.00'),
+    'totals_brought_forward.mooe_total_2': String(result.totals_brought_forward?.mooe_total_2 || '0.00'),
+    'totals_brought_forward.mooe_total_3': String(result.totals_brought_forward?.mooe_total_3 || '0.00'),
+    'totals_brought_forward.co_total_1': String(result.totals_brought_forward?.co_total_1 || '0.00'),
+    'totals_brought_forward.co_total_2': String(result.totals_brought_forward?.co_total_2 || '0.00'),
+    'totals_brought_forward.co_total_3': String(result.totals_brought_forward?.co_total_3 || '0.00'),
+    'totals_brought_forward.withholding_total_1': String(result.totals_brought_forward?.withholding_total_1 || '0.00'),
+    'totals_brought_forward.withholding_total_2': String(result.totals_brought_forward?.withholding_total_2 || '0.00'),
+    'totals_brought_forward.withholding_total_3': String(result.totals_brought_forward?.withholding_total_3 || '0.00'),
+    
+    // Flattened individual column headers to prevent undefined values
+    'mooe_col_1': String(result.mooe_col_1 || ''),
+    'mooe_col_2': String(result.mooe_col_2 || ''),
+    'mooe_col_3': String(result.mooe_col_3 || ''),
+    'co_col_1': String(result.co_col_1 || ''),
+    'co_col_2': String(result.co_col_2 || ''),
+    'co_col_3': String(result.co_col_3 || ''),
+    'withholding_col_1': String(result.withholding_col_1 || ''),
+    'withholding_col_2': String(result.withholding_col_2 || ''),
+    'withholding_col_3': String(result.withholding_col_3 || ''),
+    
+    // Flattened conditional flags to prevent undefined values
+    'has_mooe_col_1': String(result.has_mooe_col_1 || 'false'),
+    'has_mooe_col_2': String(result.has_mooe_col_2 || 'false'),
+    'has_mooe_col_3': String(result.has_mooe_col_3 || 'false'),
+    'has_co_col_1': String(result.has_co_col_1 || 'false'),
+    'has_co_col_2': String(result.has_co_col_2 || 'false'),
+    'has_co_col_3': String(result.has_co_col_3 || 'false'),
+    'has_withholding_col_1': String(result.has_withholding_col_1 || 'false'),
+    'has_withholding_col_2': String(result.has_withholding_col_2 || 'false'),
+    'has_withholding_col_3': String(result.has_withholding_col_3 || 'false'),
+  };
+  
+  console.log('Final RCB mapped data:', finalResult);
+  console.log('Final validation - logo:', finalResult.logo);
+  console.log('Final validation - quarter:', finalResult.quarter);
+  console.log('Final validation - fund:', finalResult.fund);
+  console.log('Final validation - treasurer_name:', finalResult.treasurer_name);
+  console.log('Final validation - chairperson_name:', finalResult.chairperson_name);
+  return finalResult;
+}
+
 
