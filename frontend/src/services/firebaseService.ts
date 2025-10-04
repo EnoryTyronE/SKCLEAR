@@ -844,45 +844,105 @@ export const saveRCBData = async (yearQuarter: string, rcbData: {
   settings: any;
   metadata: any;
   entries: any[];
+  isEditingPeriodClosed?: boolean;
+  signedPdfUrl?: string | null;
 }) => {
   try {
+    console.log('Attempting to save RCB data for:', yearQuarter);
+    console.log('RCB data to save:', rcbData);
+    
     const rcbRef = doc(db, 'rcb', yearQuarter);
-    await setDoc(rcbRef, {
+    
+    // Create the document data with proper timestamp handling and filter out undefined values
+    const documentData = {
       ...rcbData,
       updatedAt: serverTimestamp(),
-      createdAt: serverTimestamp()
-    });
+      createdAt: serverTimestamp(),
+      savedBy: auth.currentUser?.uid || 'unknown',
+      savedAt: new Date().toISOString()
+    };
+    
+    // Remove undefined and null values to prevent Firebase errors
+    const cleanDocumentData = Object.fromEntries(
+      Object.entries(documentData).filter(([_, value]) => value !== undefined && value !== null)
+    );
+    
+    console.log('Document data prepared:', documentData);
+    console.log('Cleaned document data:', cleanDocumentData);
+    
+    await setDoc(rcbRef, cleanDocumentData);
     console.log('RCB data saved successfully for:', yearQuarter);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving RCB data:', error);
+    console.error('Error details:', {
+      code: error?.code,
+      message: error?.message,
+      stack: error?.stack
+    });
     throw error;
   }
 };
 
 export const loadRCBData = async (yearQuarter: string) => {
   try {
+    console.log('Attempting to load RCB data for:', yearQuarter);
     const rcbRef = doc(db, 'rcb', yearQuarter);
     const rcbSnap = await getDoc(rcbRef);
     
     if (rcbSnap.exists()) {
       const data = rcbSnap.data();
       console.log('RCB data loaded successfully for:', yearQuarter);
+      console.log('Loaded data:', data);
       return {
         settings: data.settings || {},
         metadata: data.metadata || {},
-        entries: data.entries || []
+        entries: data.entries || [],
+        isEditingPeriodClosed: data.isEditingPeriodClosed || false,
+        signedPdfUrl: data.signedPdfUrl || null
       };
     } else {
       console.log('No RCB data found for:', yearQuarter);
       return {
         settings: {},
         metadata: {},
-        entries: []
+        entries: [],
+        isEditingPeriodClosed: false,
+        signedPdfUrl: null
       };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error loading RCB data:', error);
+    console.error('Error details:', {
+      code: error?.code,
+      message: error?.message,
+      stack: error?.stack
+    });
+    throw error;
+  }
+};
+
+
+// Delete all RCB data from Firebase
+export const deleteAllRCBData = async () => {
+  try {
+    console.log('Starting deletion of all RCB data...');
+    
+    // Get all RCB documents
+    const rcbCollection = collection(db, 'rcb');
+    const querySnapshot = await getDocs(rcbCollection);
+    
+    const deletePromises: Promise<void>[] = [];
+    querySnapshot.forEach((doc) => {
+      deletePromises.push(deleteDoc(doc.ref));
+    });
+    
+    await Promise.all(deletePromises);
+    console.log(`Successfully deleted ${deletePromises.length} RCB documents`);
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting all RCB data:', error);
     throw error;
   }
 };

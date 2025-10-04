@@ -2,11 +2,12 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Layers, ReceiptText, Wallet } from 'lucide-react';
 import Budget from './Budget';
 import { useAuth } from '../contexts/AuthContext';
-import { getSKProfile, saveRCBData, loadRCBData } from '../services/firebaseService';
+import { saveRCBData, loadRCBData, deleteAllRCBData } from '../services/firebaseService';
 import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase';
 import { logActivity } from '../services/activityService';
 import { exportDocxFromTemplate, mapRCBToTemplate } from '../services/docxExport';
+import googleDriveService from '../services/googleDriveService';
 
 type SKProfile = {
   barangay?: string;
@@ -24,11 +25,29 @@ type SKMember = {
 type TabKey = 'budget' | 'rcb' | 'pr';
 
 const Financial: React.FC = () => {
-  const { user } = useAuth();
+  const { user, skProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('rcb');
-  const [financialYear, setFinancialYear] = useState<string>(new Date().getFullYear().toString());
+  // Calculate current term year based on SK profile
+  const getCurrentTermYear = useCallback(() => {
+    if (!skProfile || !skProfile.skTermStart) {
+      return new Date().getFullYear().toString(); // Fallback to current calendar year
+    }
+    
+    const currentYear = new Date().getFullYear();
+    const termStart = skProfile.skTermStart;
+    const termEnd = skProfile.skTermEnd || (termStart + 2); // Default 3-year term
+    
+    // If current year is within term, use current year
+    if (currentYear >= termStart && currentYear <= termEnd) {
+      return currentYear.toString();
+    }
+    
+    // Otherwise, use the term start year
+    return termStart.toString();
+  }, [skProfile]);
+
+  const [financialYear, setFinancialYear] = useState<string>('');
   const [quarter, setQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1');
-  const [skProfile, setSkProfile] = useState<SKProfile | null>(null);
   const [skMembers, setSkMembers] = useState<SKMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -62,6 +81,7 @@ const Financial: React.FC = () => {
 
   // Year-Quarter key and settings (define early for draft defaults)
   const yqKey = `${financialYear}-${quarter}`;
+  
   const rcbSettings: RCBSettings = useMemo(() => {
     if (!rcbSettingsByYQ[yqKey]) {
       const defaults: RCBSettings = {
@@ -107,9 +127,49 @@ const Financial: React.FC = () => {
   const [rcbEntriesByYQ, setRcbEntriesByYQ] = useState<Record<string, RCBEntry[]>>({});
   const [showRcbPreview, setShowRcbPreview] = useState<boolean>(false);
   const [showRcbInstructions, setShowRcbInstructions] = useState<boolean>(false);
-  const [isEditingPeriodClosed, setIsEditingPeriodClosed] = useState<boolean>(false);
+  const [isEditingPeriodClosedByYQ, setIsEditingPeriodClosedByYQ] = useState<Record<string, boolean>>({});
   const [showPdfUpload, setShowPdfUpload] = useState<boolean>(false);
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
+  const [uploadingPdf, setUploadingPdf] = useState<boolean>(false);
+  const [signedPdfUrlsByYQ, setSignedPdfUrlsByYQ] = useState<Record<string, string>>({});
+
+  // Set initial financial year when SK profile is loaded
+  useEffect(() => {
+    if (skProfile && !financialYear) {
+      const termYear = getCurrentTermYear();
+      setFinancialYear(termYear);
+    }
+  }, [skProfile, financialYear, getCurrentTermYear]);
+
+  // Get available years based on SK term
+  const getAvailableYears = useCallback(() => {
+    if (!skProfile || !skProfile.skTermStart) {
+      // Fallback: show current year and 3 years before/after
+      const currentYear = new Date().getFullYear();
+      return Array.from({ length: 7 }, (_, i) => String(currentYear - 3 + i));
+    }
+    
+    const termStart = skProfile.skTermStart;
+    const termEnd = skProfile.skTermEnd || (termStart + 2); // Default 3-year term
+    
+    // Return years from term start to term end
+    const years = [];
+    for (let year = termStart; year <= termEnd; year++) {
+      years.push(year.toString());
+    }
+    
+    return years;
+  }, [skProfile]);
+
+  // Helper to get editing period status for current YQ
+  const isEditingPeriodClosed = useMemo(() => {
+    return isEditingPeriodClosedByYQ[yqKey] || false;
+  }, [isEditingPeriodClosedByYQ, yqKey]);
+
+  // Helper to get signed PDF URL for current YQ
+  const signedPdfUrl = useMemo(() => {
+    return signedPdfUrlsByYQ[yqKey] || null;
+  }, [signedPdfUrlsByYQ, yqKey]);
 
   // Draft entry inputs
   const emptyDraft = (): RCBEntry => ({
@@ -238,6 +298,75 @@ const Financial: React.FC = () => {
     }
   };
 
+
+  // Refresh RCB data
+  const refreshRCB = async () => {
+    try {
+      setLoading(true);
+      const rcbData = await loadRCBData(yqKey);
+      
+      // Reload existing RCB data if available
+      if (rcbData.settings && Object.keys(rcbData.settings).length > 0) {
+        setRcbSettingsByYQ(prev => ({ ...prev, [yqKey]: rcbData.settings }));
+        setRcbMetadataByYQ(prev => ({ ...prev, [yqKey]: rcbData.metadata }));
+        setRcbEntriesByYQ(prev => ({ ...prev, [yqKey]: rcbData.entries }));
+        setIsEditingPeriodClosedByYQ(prev => ({ ...prev, [yqKey]: rcbData.isEditingPeriodClosed || false }));
+        setSignedPdfUrlsByYQ(prev => ({ ...prev, [yqKey]: rcbData.signedPdfUrl || '' }));
+      }
+      
+      setSaved(false);
+      setHasChanges(false);
+    } catch (error) {
+      console.error('Error refreshing RCB data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reset all RCB data across all years and quarters
+  const resetAllRCB = async () => {
+    const confirmMessage = `⚠️ WARNING: This will permanently delete ALL RCB data across ALL years and quarters!\n\nThis includes:\n• All transaction entries\n• All settings and metadata\n• All editing period statuses\n\nThis action CANNOT be undone. Are you absolutely sure you want to proceed?`;
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        // Delete all RCB data from Firebase
+        await deleteAllRCBData();
+        
+        // Reset all state
+        setRcbEntriesByYQ({});
+        setRcbSettingsByYQ({});
+        setRcbMetadataByYQ({});
+        setIsEditingPeriodClosedByYQ({});
+        setSignedPdfUrlsByYQ({});
+        setDraft(emptyDraft());
+        setHasChanges(false); // No changes to save since we deleted everything
+        
+        // Log reset all activity
+        await logActivity({
+          type: 'budget',
+          title: 'RCB Reset All',
+          description: 'All RCB data across all years and quarters has been reset',
+          member: {
+            name: user?.name || 'Unknown',
+            role: user?.role || 'user',
+            id: user?.uid || ''
+          },
+          status: 'completed',
+          module: 'Financial',
+          details: {
+            action: 'reset_all_rcb',
+            affectedData: 'all_years_quarters'
+          }
+        });
+        
+        alert('All RCB data has been permanently deleted and reset successfully.');
+      } catch (error) {
+        console.error('Error during reset all RCB:', error);
+        alert('There was an error resetting all RCB data. Please try again.');
+      }
+    }
+  };
+
   // Calculate ending balance for current quarter
   const getEndingBalance = () => {
     if (entries.length === 0) {
@@ -255,7 +384,9 @@ const Financial: React.FC = () => {
       await saveRCBData(yqKey, { 
         settings: rcbSettings, 
         metadata: rcbMetadata, 
-        entries: entries 
+        entries: entries,
+        isEditingPeriodClosed: isEditingPeriodClosed,
+        signedPdfUrl: signedPdfUrl || null
       });
       
       // Log save activity
@@ -372,8 +503,9 @@ const Financial: React.FC = () => {
 
   // Close editing period function
   const closeEditingPeriod = async () => {
-    if (window.confirm('Are you sure you want to close the editing period for this quarter? This will make all forms read-only.')) {
-      setIsEditingPeriodClosed(true);
+    if (window.confirm(`Are you sure you want to close the editing period for ${quarter} ${financialYear}? This will make forms read-only for this quarter only.`)) {
+      setIsEditingPeriodClosedByYQ(prev => ({ ...prev, [yqKey]: true }));
+      setHasChanges(true); // Mark that changes have been made
       setShowPdfUpload(true);
       
       // Log activity
@@ -418,15 +550,31 @@ const Financial: React.FC = () => {
     }
 
     try {
-      // Here you would typically upload the PDF to Firebase Storage
-      // For now, we'll just simulate the upload
-      console.log('Uploading signed RCB PDF:', uploadedPdf.name);
+      setUploadingPdf(true);
+      console.log('Uploading signed RCB PDF to Google Drive:', uploadedPdf.name);
+      
+      // Upload PDF to Google Drive
+      const driveFile = await googleDriveService.uploadFile(uploadedPdf, 'SK Management System - RCB Documents');
+      
+      if (driveFile && driveFile.webViewLink) {
+        // Save the PDF URL to state and Firebase
+        setSignedPdfUrlsByYQ(prev => ({ ...prev, [yqKey]: driveFile.webViewLink }));
+        setHasChanges(true); // Mark that changes have been made
+        
+        // Save to Firebase immediately
+        await saveRCBData(yqKey, { 
+          settings: rcbSettings, 
+          metadata: rcbMetadata, 
+          entries: entries,
+          isEditingPeriodClosed: isEditingPeriodClosed,
+          signedPdfUrl: driveFile.webViewLink
+        });
       
       // Log activity
       await logActivity({
         type: 'budget',
         title: 'Signed RCB Submitted',
-        description: `Signed RCB PDF submitted for ${quarter} ${financialYear}`,
+          description: `Signed RCB PDF uploaded to Google Drive for ${quarter} ${financialYear}`,
         member: {
           name: user?.name || 'Unknown',
           role: user?.role || 'user',
@@ -437,15 +585,23 @@ const Financial: React.FC = () => {
         details: {
           year: financialYear,
           quarter: quarter,
-          fileName: uploadedPdf.name
+            fileName: uploadedPdf.name,
+            driveFileId: driveFile.fileId,
+            pdfUrl: driveFile.webViewLink
         }
       });
 
       setShowPdfUpload(false);
-      alert('Signed RCB submitted successfully! You can now proceed to the next quarter.');
+        setUploadedPdf(null);
+        alert('Signed RCB uploaded to Google Drive and saved successfully! You can now proceed to the next quarter.');
+      } else {
+        throw new Error('Failed to get Google Drive URL for uploaded PDF');
+      }
     } catch (error) {
-      console.error('Error submitting signed RCB:', error);
-      alert('Error submitting signed RCB. Please try again.');
+      console.error('Error uploading signed RCB to Google Drive:', error);
+      alert('Error uploading signed RCB to Google Drive. Please try again.');
+    } finally {
+      setUploadingPdf(false);
     }
   };
 
@@ -476,11 +632,7 @@ const Financial: React.FC = () => {
       if (!user) return;
       try {
         setLoading(true);
-        const [profile, rcbData] = await Promise.all([
-          getSKProfile(),
-          loadRCBData(yqKey)
-        ]);
-        setSkProfile(profile as SKProfile);
+        const rcbData = await loadRCBData(yqKey);
         await loadSKMembers();
         
         // Load existing RCB data if available
@@ -492,6 +644,12 @@ const Financial: React.FC = () => {
         }
         if (rcbData.entries && rcbData.entries.length > 0) {
           setRcbEntriesByYQ(prev => ({ ...prev, [yqKey]: rcbData.entries }));
+        }
+        if (rcbData.isEditingPeriodClosed !== undefined) {
+          setIsEditingPeriodClosedByYQ(prev => ({ ...prev, [yqKey]: rcbData.isEditingPeriodClosed }));
+        }
+        if (rcbData.signedPdfUrl) {
+          setSignedPdfUrlsByYQ(prev => ({ ...prev, [yqKey]: rcbData.signedPdfUrl }));
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -510,7 +668,9 @@ const Financial: React.FC = () => {
       await saveRCBData(yqKey, { 
         settings: rcbSettings, 
         metadata: rcbMetadata, 
-        entries: entries 
+        entries: entries,
+        isEditingPeriodClosed: isEditingPeriodClosed,
+        signedPdfUrl: signedPdfUrl || null
       });
       
       // No activity logging for auto-save - only for actual user actions
@@ -523,7 +683,7 @@ const Financial: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [user, yqKey, rcbSettings, rcbMetadata, entries, saving, quarter, financialYear, hasChanges]);
+  }, [user, yqKey, rcbSettings, rcbMetadata, entries, saving, quarter, financialYear, hasChanges, isEditingPeriodClosed, signedPdfUrl]);
 
   // Auto-save when data changes (debounced)
   useEffect(() => {
@@ -590,7 +750,14 @@ const Financial: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Register of Cash in Bank (RCB)</h2>
-                <p className="text-sm text-gray-600">Year {financialYear} • {quarter} ({quarterMonths[quarter]})</p>
+                <p className="text-sm text-gray-600">
+                  Year {financialYear} • {quarter} ({quarterMonths[quarter]})
+                  {skProfile && (
+                    <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                      SK Term {skProfile.skTermStart}-{skProfile.skTermEnd || skProfile.skTermStart + 2}
+                    </span>
+                  )}
+                </p>
                 
                 <div className="flex items-center gap-2">
                   {saving && (
@@ -623,19 +790,28 @@ const Financial: React.FC = () => {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+            </div>
+
+            {/* RCB Status for Selected Year/Quarter - Inside Management */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h5 className="text-md font-semibold text-blue-800">RCB Status</h5>
+                
+                {/* Year and Quarter Selectors */}
+                <div className="flex items-center gap-2">
                 <div className="min-w-0 relative">
                   <select
                     value={financialYear}
                     onChange={(e) => setFinancialYear(e.target.value)}
-                    className="px-4 py-2 pr-8 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-medium appearance-none"
+                      className="px-3 py-1.5 pr-6 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-medium appearance-none"
+                      title={skProfile ? `SK Term: ${skProfile.skTermStart}-${skProfile.skTermEnd || skProfile.skTermStart + 2}` : 'Year selection'}
                   >
-                    {Array.from({ length: 7 }, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => (
+                      {getAvailableYears().map(y => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -644,70 +820,186 @@ const Financial: React.FC = () => {
                   <select
                     value={quarter}
                     onChange={(e) => setQuarter(e.target.value as any)}
-                    className="px-4 py-2 pr-8 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-medium appearance-none"
+                      className="px-3 py-1.5 pr-6 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-medium appearance-none"
                   >
                     {(['Q1','Q2','Q3','Q4'] as const).map(q => (
                       <option key={q} value={q}>{q}</option>
                     ))}
                   </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button 
-                    className="btn-secondary text-sm"
-                    onClick={() => setShowRcbInstructions(!showRcbInstructions)}
-                  >
-                    {showRcbInstructions ? 'Hide Instructions' : 'Show Instructions'}
-                  </button>
-                  <button 
-                    className="btn-secondary text-sm"
-                    onClick={() => setShowRcbPreview(!showRcbPreview)}
-                  >
-                    {showRcbPreview ? 'Hide Preview' : 'Print Preview'}
-                  </button>
-                  {!isEditingPeriodClosed && (
-                    <>
-                      <button 
-                        onClick={resetRCB}
-                        className="btn-secondary text-sm"
-                      >
-                        Reset
-                      </button>
-                      <button 
-                        onClick={handleSaveRCB}
-                        disabled={saving}
-                        className="btn-primary text-sm"
-                      >
-                        {saving ? 'Saving...' : 'Save RCB'}
-                      </button>
-                      <button 
-                        onClick={handleExportRCB}
-                        className="btn-secondary text-sm"
-                      >
-                        Export to Word
-                      </button>
-                      <button 
-                        onClick={closeEditingPeriod}
-                        className="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 text-sm"
-                      >
-                        Close Editing Period
-                      </button>
-                    </>
-                  )}
-                  {isEditingPeriodClosed && (
-                    <div className="flex items-center gap-2 text-sm text-orange-600">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                      </svg>
-                      Editing Period Closed
-                    </div>
-                  )}
+                  <span className="text-sm text-blue-700 font-medium">
+                    ({quarterMonths[quarter]})
+                  </span>
                 </div>
               </div>
+              
+              {(() => {
+                const rcbForYQ = entries.length > 0 ? {
+                  year: financialYear,
+                  quarter: quarter,
+                  status: isEditingPeriodClosed ? 'closed_for_editing' : entries.length > 0 ? 'active' : 'not_initiated',
+                  entriesCount: entries.length,
+                  totalDeposits: totals.deposit,
+                  totalWithdrawals: totals.withdrawal,
+                  endingBalance: totals.balance,
+                  balanceBroughtForward: rcbMetadata.balanceBroughtForward,
+                  lastEntryDate: entries.length > 0 ? entries[entries.length - 1].date : null,
+                  fund: rcbMetadata.fund,
+                  sheetNo: rcbMetadata.sheetNo
+                } : null;
+
+                if (rcbForYQ && (rcbForYQ.status === 'active' || rcbForYQ.status === 'closed_for_editing')) {
+                  return (
+                    <>
+                      {/* Status Badge and Basic Info */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-4">
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            rcbForYQ.status === 'closed_for_editing' 
+                              ? 'bg-orange-100 text-orange-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {rcbForYQ.status === 'closed_for_editing' ? 'Closed for Editing' : 'Active'}
+                          </span>
+                          {rcbForYQ.lastEntryDate && (
+                            <span className="text-sm text-blue-700">
+                              Last entry: {rcbForYQ.lastEntryDate}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Detailed Information Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium text-blue-700">Year:</span>
+                          <div className="text-gray-600">{rcbForYQ.year}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Quarter:</span>
+                          <div className="text-gray-600">{rcbForYQ.quarter}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Fund:</span>
+                          <div className="text-gray-600">{rcbForYQ.fund}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Sheet No:</span>
+                          <div className="text-gray-600">{rcbForYQ.sheetNo}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Entries Count:</span>
+                          <div className="text-gray-600">{rcbForYQ.entriesCount}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Total Deposits:</span>
+                          <div className="text-gray-600">₱{rcbForYQ.totalDeposits.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Total Withdrawals:</span>
+                          <div className="text-gray-600">₱{rcbForYQ.totalWithdrawals.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Ending Balance:</span>
+                          <div className="text-gray-600 font-semibold text-green-600">₱{rcbForYQ.endingBalance.toLocaleString()}</div>
+                        </div>
+                      </div>
+                    </>
+                  );
+                } else {
+                  return (
+                    <>
+                      {/* Status Badge and Basic Info */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-4">
+                          <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                            Not Initiated
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Detailed Information Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium text-blue-700">Year:</span>
+                          <div className="text-gray-600">{financialYear}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Quarter:</span>
+                          <div className="text-gray-600">{quarter}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Fund:</span>
+                          <div className="text-gray-600">{rcbMetadata.fund}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Sheet No:</span>
+                          <div className="text-gray-600">{rcbMetadata.sheetNo}</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Entries Count:</span>
+                          <div className="text-gray-600">0</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Total Deposits:</span>
+                          <div className="text-gray-600">₱0.00</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Total Withdrawals:</span>
+                          <div className="text-gray-600">₱0.00</div>
+                        </div>
+                        <div>
+                          <span className="font-medium text-blue-700">Balance Brought Forward:</span>
+                          <div className="text-gray-600">₱{rcbMetadata.balanceBroughtForward.toLocaleString()}</div>
+                        </div>
+                      </div>
+                    </>
+                  );
+                }
+              })()}
+              
+              {/* Warning Message */}
+              {entries.length === 0 && (
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-center">
+                    <span className="text-amber-600 mr-2">⚠️</span>
+                    <span className="text-sm text-amber-800">
+                      RCB for {quarter} {financialYear} has not been initiated yet. Start adding entries to begin tracking cash in bank transactions.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Success Message for Active RCB */}
+              {entries.length > 0 && !isEditingPeriodClosed && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center">
+                    <span className="text-green-600 mr-2">✅</span>
+                    <span className="text-sm text-green-800">
+                      RCB for {quarter} {financialYear} is active with {entries.length} transaction{entries.length !== 1 ? 's' : ''}. 
+                      Current balance: ₱{totals.balance.toLocaleString()}
+                    </span>
+                  </div>
+                    </div>
+                  )}
+
+              {/* Closed for Editing Message */}
+              {entries.length > 0 && isEditingPeriodClosed && (
+                <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div className="flex items-center">
+                    <span className="text-orange-600 mr-2">🔒</span>
+                    <span className="text-sm text-orange-800">
+                      RCB for {quarter} {financialYear} is closed for editing. {entries.length} transaction{entries.length !== 1 ? 's' : ''} recorded. 
+                      Final balance: ₱{totals.balance.toLocaleString()}
+                    </span>
+                </div>
+              </div>
+              )}
             </div>
 
             {showRcbInstructions ? (
@@ -782,7 +1074,121 @@ const Financial: React.FC = () => {
                   </div>
                 </div>
               </div>
-            ) : !showRcbPreview ? (
+            ) : null}
+            
+            {/* Action Buttons - Always Visible */}
+            <div className="flex items-center gap-2 flex-wrap mb-4">
+              {/* Save RCB - Leftmost */}
+              <button 
+                onClick={handleSaveRCB}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : (
+                  'Save RCB'
+                )}
+              </button>
+              
+              {/* Print Preview - Right beside Save RCB */}
+              <button 
+                className={`px-3 py-2 border rounded-md text-sm font-medium transition-colors ${
+                  showRcbPreview 
+                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                onClick={() => setShowRcbPreview(!showRcbPreview)}
+              >
+                {showRcbPreview ? 'Hide Preview' : 'Print Preview'}
+              </button>
+              
+              {/* Refresh Button */}
+              <button 
+                onClick={refreshRCB}
+                disabled={loading}
+                className="px-3 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin"></div>
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                  </>
+                )}
+              </button>
+              
+              {/* Show/Hide Instructions */}
+              <button 
+                className="px-3 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium transition-colors"
+                onClick={() => setShowRcbInstructions(!showRcbInstructions)}
+              >
+                {showRcbInstructions ? 'Hide Instructions' : 'Show Instructions'}
+              </button>
+              
+              {/* Close Editing Period - beside Show Instructions */}
+              {!isEditingPeriodClosed && (
+                <button 
+                  onClick={closeEditingPeriod}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 text-sm font-medium transition-colors"
+                >
+                  Close Editing Period
+                </button>
+              )}
+              
+              {/* Export to Word - only show when NOT in preview mode */}
+              {!showRcbPreview && (
+                <button 
+                  onClick={handleExportRCB}
+                  className="px-3 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium transition-colors"
+                >
+                  Export to Word
+                </button>
+              )}
+              
+              {/* Only show when editing period is open */}
+              {!isEditingPeriodClosed && (
+                <>
+                  {/* Reset */}
+                  <button 
+                    onClick={resetRCB}
+                    className="px-3 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium transition-colors"
+                  >
+                    Reset
+                  </button>
+                  
+                  {/* Reset All RCB */}
+                  <button 
+                    onClick={resetAllRCB}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium transition-colors"
+                  >
+                    Reset All RCB
+                  </button>
+                </>
+              )}
+              
+              {/* Editing Period Status */}
+              {isEditingPeriodClosed && (
+                <div className="flex items-center gap-2 text-sm text-orange-600">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  Editing Period Closed
+                </div>
+              )}
+            </div>
+
+            {/* Data Entry Section - Only show when not in preview mode */}
+            {!showRcbPreview && (
               <div className="card p-6">
                 <div className="mb-4">
                   <div className="text-lg font-semibold text-gray-900">RCB Data Entry</div>
@@ -1104,11 +1510,42 @@ const Financial: React.FC = () => {
 
             <div className="text-xs text-gray-500 mt-3">Prepared and certified correct by: SK Treasurer • Noted by: SK Chairperson</div>
               </div>
-            ) : (
+            )}
+
+            {/* Preview Section */}
+            {showRcbPreview && (
               <div className="card p-6">
-                <div className="mb-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
                   <div className="text-lg font-semibold text-gray-900">RCB Print Preview</div>
                   <div className="text-sm text-gray-600">Preview of {quarter} {financialYear} RCB</div>
+                  </div>
+                  
+                  {/* Export to Word button in top right when in preview */}
+                  <button 
+                    onClick={handleExportRCB}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export to Word
+                  </button>
+                </div>
+                
+                {/* Export and Print Note */}
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <p className="font-medium text-blue-800">Note about downloading and printing:</p>
+                      <p className="text-sm text-blue-700 mt-1">
+                        To download and print the RCB, click the "Export to Word" button above, then open the downloaded document and print from there.
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 
                 {/* Document Header */}
@@ -1391,8 +1828,9 @@ const Financial: React.FC = () => {
                     value={financialYear}
                     onChange={(e) => setFinancialYear(e.target.value)}
                     className="px-4 py-2 pr-8 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-medium appearance-none"
+                    title={skProfile ? `SK Term: ${skProfile.skTermStart}-${skProfile.skTermEnd || skProfile.skTermStart + 2}` : 'Year selection'}
                   >
-                    {Array.from({ length: 7 }, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => (
+                    {getAvailableYears().map(y => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
@@ -1418,9 +1856,13 @@ const Financial: React.FC = () => {
                     </svg>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button className="btn-primary text-sm">Create PR</button>
-                  <button className="btn-secondary text-sm">Export to Word</button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors">
+                    Create PR
+                  </button>
+                  <button className="px-3 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium transition-colors">
+                    Export to Word
+                  </button>
                 </div>
               </div>
             </div>
@@ -1439,7 +1881,11 @@ const Financial: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Upload Signed RCB PDF</h3>
               <button
-                onClick={() => setShowPdfUpload(false)}
+                onClick={() => {
+                  setShowPdfUpload(false);
+                  // Reset editing period status for this YQ when canceling
+                  setIsEditingPeriodClosedByYQ(prev => ({ ...prev, [yqKey]: false }));
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1452,6 +1898,25 @@ const Financial: React.FC = () => {
               <p className="text-sm text-gray-600 mb-3">
                 Please upload the signed PDF of the RCB for {quarter} {financialYear}. This is required before proceeding to the next quarter.
               </p>
+              
+              {signedPdfUrl && (
+                <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-sm text-green-800 font-medium">Signed PDF already uploaded</span>
+                  </div>
+                  <a 
+                    href={signedPdfUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-800 underline mt-1 inline-block"
+                  >
+                    View uploaded PDF
+                  </a>
+                </div>
+              )}
               
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                 <input
@@ -1474,17 +1939,28 @@ const Financial: React.FC = () => {
             
             <div className="flex gap-3">
               <button
-                onClick={() => setShowPdfUpload(false)}
+                onClick={() => {
+                  setShowPdfUpload(false);
+                  // Reset editing period status for this YQ when canceling
+                  setIsEditingPeriodClosedByYQ(prev => ({ ...prev, [yqKey]: false }));
+                }}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={submitSignedRcb}
-                disabled={!uploadedPdf}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                disabled={!uploadedPdf || uploadingPdf}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Submit Signed RCB
+                {uploadingPdf ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  'Submit Signed RCB'
+                )}
               </button>
             </div>
           </div>
